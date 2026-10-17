@@ -643,4 +643,56 @@ finished: done approve maria | pending now: 0
   Revendicarea unei aprobări e un `find_one_and_update` din `pending` în `deciding`: am verificat cu două thread-uri
   pornite simultan și câștigă exact unul. Dacă reluarea eșuează, aprobarea revine în `pending`.”
 
+### Pas 15 — `ratelimit.py`: Redis, fereastră fixă, atomic · 2026-10-17
+
+#### Ce am făcut
+- `RateLimiter(client, limit, window_seconds=60)` cu un script Lua (`INCR`, la prima lovitură `EXPIRE`, întoarce
+  contorul și `TTL`) înregistrat o dată cu `register_script`.
+- `hit(key)` → `(permis, secunde până la reset)`; la `RedisError` → `(True, 0)` (fail-open) și un avertisment în log.
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Limită pe client (20 / minut) | Fiecare mesaj costă tokeni: o buclă sau un script e o factură, nu doar încărcare |
+| `INCR` + `EXPIRE` într-un script Lua | Atomic: nu se strecoară alt client între ele și nu rămâne un contor fără expirare (client blocat pentru totdeauna) |
+| Fereastră fixă | Simplă și ușor de explicat; vârful la graniță e o slăbiciune asumată |
+| Fail-open | Un limitator stricat nu devine avarie; plafonul de cost rămâne în limitele agentului (6 / 5) |
+| Al doilea rezultat = `TTL` | Devine `Retry-After` în răspunsul 429 (Pas 18) |
+
+#### Ce am verificat (rezultate reale, pe `sp-redis`, cheie de test ștearsă la final, limită 3)
+```text
+hit 1: allowed=True retry_after=60s
+hit 2: allowed=True retry_after=60s
+hit 3: allowed=True retry_after=60s
+hit 4: allowed=False retry_after=60s
+hit 5: allowed=False retry_after=60s
+in Redis: b'5' ttl 60
+rate limiter unavailable, allowing the request
+redis down: (True, 0) in 0.62s
+```
+- Primele 3 trec, următoarele sunt respinse; contorul **are** expirare (`ttl 60`), deci Lua a pus-o.
+- Redis căzut → cererea trece (fail-open) în 0,62 s.
+- Fișierul are același sens ca referința (AST identic), `ruff` curat, 27 de teste verzi; nicio cheie rămasă în Redis.
+
+#### Ce am descoperit (măsurat)
+Fail-open trebuie să fie și **fail-fast**. Cu redis-py 8.1:
+| Cum e construit clientul | Redis căzut costă, per cerere |
+|---|---|
+| `redis.Redis(port=..., timeouts 0,3 s)` | **~9,8 s** (constructorul are retry implicit) |
+| `redis.Redis.from_url("redis://localhost:...", timeouts 0,3 s)` (ca aplicația) | **~0,6 s** |
+| același cu `127.0.0.1` | **~0,3 s** (Windows încearcă întâi IPv6 `::1`, apoi IPv4) |
+
+Ghidul spune „milisecunde”; pe Windows cifra reală e 0,3–0,6 s. Aplicația folosește `from_url` + 0,3 s, deci e în regulă.
+
+#### Capcane
+- Fereastra fixă permite un vârf la graniță (20 la final de fereastră + 20 la început = 40 în 2 s); alternativa:
+  sliding window sau token bucket.
+- Un client Redis cu retry implicit transformă fail-open într-o așteptare de ~10 s pe cerere.
+
+#### Cum o spun la interviu
+- „Limitez fiecare client la 20 de mesaje pe minut cu un contor Redis, fereastră fixă. `INCR` și `EXPIRE` rulează într-un
+  script Lua, deci atomic. Peste limită: 429 cu `Retry-After`. Dacă Redis cade, limitatorul e fail-open. Am măsurat că
+  trebuie să fie și fail-fast: cu retry-ul implicit din redis-py un Redis căzut costa ~10 s pe cerere; cu clientul
+  aplicației, timeout 0,3 s și fără retry, sub o secundă.”
+
 ---
