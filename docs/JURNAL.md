@@ -256,4 +256,61 @@ call 3: orders is temporarily unavailable | breaker=open | 0.00s
   RAG are timp de citire mai lung și mai puține retry-uri, pentru că un apel LLM e lent și costă. Am demonstrat
   breaker-ul: după două cereri eșuate, a treia a fost respinsă în zero secunde, fără apel de rețea.”
 
+### Pas 7 — `orders_mock.py`: sistemul de comenzi simulat · 2026-10-17
+
+#### Ce am făcut
+- Un serviciu FastAPI separat (`uvicorn supportpilot.orders_mock:app --port 9000`) cu 4 comenzi, cheie API
+  (`X-Api-Key`), rambursări idempotente după `Idempotency-Key` și un „chaos mode” (`/chaos`: `fail` = 503, `slow` = 10 s,
+  `ok`).
+
+| Comandă | Client | Stare | Ce testează |
+|---|---|---|---|
+| 1001 | c-100 | livrată acum 5 zile | rambursare permisă |
+| 1002 | c-100 | expediată, cu `internal_note` | starea comenzii; nota internă nu trebuie să ajungă la model |
+| 1003 | c-200 | livrată acum 45 de zile | în afara ferestrei de 30 de zile; „comanda altcuiva” pentru c-100 |
+| 1004 | c-200 | plasată | nelivrată → nu se rambursează |
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Un serviciu HTTP real, nu un mock în memorie | Retry-urile, timeout-ul și breaker-ul se văd pe rețea, ca în realitate |
+| Date relative la pornire (`_ago(5)`) | „Acum 5 zile” rămâne adevărat oricând pornesc serviciul |
+| Chaos mode | Pot strica serviciul la cerere ca să demonstrez reziliența |
+| Idempotența pe server, după cheie | Partea de server a ce trimite clientul din Pas 6 |
+
+#### Ce am verificat (rezultate reale)
+- `curl.exe -H "X-Api-Key: dev-orders-key" localhost:9000/orders/1002` → comanda întreagă, **inclusiv**
+  `customer_id` și `internal_note` (serviciul extern trimite tot; filtrarea se face în unealtă, Pas 8).
+- Fără cheie → `{"detail":"bad key"}` (401).
+- Clienții mei (Pas 6) contra simulatorului:
+  ```text
+  1002: shipped
+  9999: None
+  refund 1: {'refund_id': 'RF-0001', 'order_id': '1001', 'status': 'pending'}
+  refund 2: {'refund_id': 'RF-0001', 'order_id': '1001', 'status': 'pending'}
+  refund 3: {'refund_id': 'RF-0002', 'order_id': '1001', 'status': 'pending'}
+  orders failed after retries: Transient
+  chaos=fail: orders is unavailable after 0.77s
+  chaos=ok, 1002: shipped
+  ```
+  - 404 → `None`; **aceeași cheie de idempotență → aceeași rambursare** (`RF-0001` de două ori); altă cheie → `RF-0002`.
+  - Cu `fail`: 3 încercări (trei `503` în log-ul serverului), apoi `ServiceUnavailable` în 0,77 s.
+- Fișierul are același sens ca referința (AST identic), `ruff` curat.
+
+#### Capcane
+- `/chaos` nu are cheie: acceptabil doar într-un simulator de dezvoltare.
+- Starea (rambursări, mod) e în memorie: la repornire, `RF-` începe iar de la `0001`.
+- În PowerShell se scrie `curl.exe`, nu `curl` (alias pentru `Invoke-WebRequest`).
+
+#### Cum o spun la interviu
+- „Am un simulator al sistemului de comenzi, cu patru comenzi alese să acopere fiecare caz și un chaos mode care
+  întoarce 503 sau răspunde lent. Așa demonstrez retry-ul, timeout-ul și breaker-ul pe un serviciu HTTP real. Am
+  verificat și idempotența: aceeași cheie de două ori a întors aceeași rambursare.”
+
+### ✅ Checkpoint B — servicii externe
+- [x] pot desena circuit breaker-ul (closed → open → half-open)
+- [x] pot explica de ce 404 nu se reîncearcă și nu deschide breaker-ul
+- [x] simulatorul răspunde pe 9000
+- [x] commit pe fiecare pas (5, 6, 7)
+
 ---
