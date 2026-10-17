@@ -3,7 +3,7 @@
 Citește-o de sus în jos, o dată, apoi folosește secțiunea 8 (auto-test). Dovezile, pas cu pas: `docs/JURNAL.md`.
 Varianta de 15 minute: `docs/STUDIU-SIMPLU.md`. Scriptul de interviu: `docs/INTERVIU.md`. Cartonașe: `docs/flashcards.html`.
 
-> **Unde sunt acum (2026-10-17): pașii 1–17 din 32 făcuți** (fazele A–E + schemele API; 27 de teste). Fișa descrie
+> **Unde sunt acum (2026-10-17): pașii 1–18 din 32 făcuți** (fazele A–E + schemele și rutele API; 27 de teste). Fișa descrie
 > aplicația **întreagă**, ca să înveți de la început ce construiești. Cifrele marcate *(referință)* vin din rularea de
 > verificare a ghidului, nu din build-ul meu; le înlocuiesc cu ale mele când ajung la pasul respectiv.
 

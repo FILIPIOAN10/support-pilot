@@ -780,4 +780,52 @@ status 'refunded'  -> literal_error: Input should be 'open' or 'awaiting_approva
 - „Contractul e în scheme Pydantic separate pentru intrare și ieșire, cu limite: o cerere greșită e respinsă cu 422
   înainte să ajungă la model, deci nu costă nimic. Adminul vede argumentele exacte ale acțiunii pe care o aprobă.”
 
+### Pas 18 — `api.py`: autentificare, rate limit, rute · 2026-10-17
+
+#### Ce am făcut
+- Fabrici cu `@lru_cache` (`get_mongo`, `get_redis`, `get_store`, `get_service`, `get_rate_limiter`): construite o
+  dată, înlocuibile în teste cu `dependency_overrides`.
+- Două roluri: `customer_id` (cheia gateway-ului + `X-Customer-Id` validat cu `^[A-Za-z0-9_-]{1,64}$`) și `admin_user`
+  (cheia de admin; `X-Admin-User` ajunge în audit). Chei comparate cu `hmac.compare_digest`.
+- Rute: `POST /v1/chat`, `GET /v1/conversations/{id}`, `GET /v1/admin/approvals`, `POST /v1/admin/approvals/{id}`,
+  `/health/live`, `/health/ready`.
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Strat subțire: autentifică, limitează, validează, apelează serviciul, traduce excepții | Logica rămâne în `service.py`, testabilă fără HTTP |
+| Comparare în timp constant | Fără timing attack pe chei |
+| Rate limit primul, cu 429 + `Retry-After` | Un mesaj respins nu consumă tokeni |
+| Conversația altcuiva → 404, nu 403 | Nu confirm că un id există |
+| Conversație în așteptare → 409; al doilea admin → 404 | Coduri clare pentru cazurile de business |
+| `/health/ready`: Mongo obligatoriu, Redis doar raportat | Starea stă în Mongo; limitatorul e fail-open, deci Redis căzut nu scoate serviciul din trafic |
+| Client Redis cu `from_url` + timeout 0,3 s | Fail-fast (măsurat la Pas 15: fără retry implicit) |
+
+#### Ce am verificat (rezultate reale, rutele reale cu `TestClient`, dependențe grele înlocuite, limită 4)
+```text
+1) no key                          401 {"detail":"Missing or invalid API key"}
+2) bad X-Customer-Id               400 {"detail":"X-Customer-Id is required"}
+3) empty message                   422 {"detail":[{"type":"string_too_short", ...
+4) c-100 asks for a refund         200 {..."status":"awaiting_approval", ...
+5) c-100 writes while waiting      409 {"detail":"A human is reviewing the last request; wait for the result"}
+6) c-200 reads c-100's chat        404 {"detail":"No such conversation"}
+7) customer key on admin route     401 {"detail":"Missing or invalid admin key"}
+8) admin lists approvals           200 [{..."customer_id":"c-100", ...
+9) admin approves                  200 {..."status":"open","reply":"Done. Refund RF-0001 is registe...
+10) second admin, same approval    404 {"detail":"Nothing is waiting for approval there"}
+11) c-100, 5th message in a minute 429 Retry-After=60 {"detail":"Too many messages, slow down"}
+```
+- Toate codurile HTTP ale proiectului; al doilea admin pe aceeași aprobare primește 404 (revendicarea atomică, prin
+  HTTP); corpul invalid (422) nu consumă din limită.
+- Fișierul are același sens ca referința (AST identic), `ruff` curat, 27 de teste verzi; nimic rămas în Mongo/Redis.
+
+#### Capcane
+- Identitatea clientului e un header pus de gateway, dovedit doar de cheia gateway-ului: model simplificat; real ar fi
+  un token semnat (JWT/OIDC).
+
+#### Cum o spun la interviu
+- „Stratul HTTP e subțire: două roluri cu chei separate, comparate în timp constant; rate limit-ul e primul pas, cu 429
+  și `Retry-After`; conversația altcuiva dă 404, nu 403; o conversație în așteptare dă 409; al doilea admin pe aceeași
+  aprobare primește 404. Readiness-ul cere MongoDB, dar doar raportează Redis, pentru că limitatorul e fail-open.”
+
 ---
