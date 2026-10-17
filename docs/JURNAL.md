@@ -314,3 +314,57 @@ call 3: orders is temporarily unavailable | breaker=open | 0.00s
 - [x] commit pe fiecare pas (5, 6, 7)
 
 ---
+
+## Faza C — Uneltele agentului
+
+### Pas 8 — `tools.py`: unde stă securitatea · 2026-10-17
+
+#### Ce am făcut
+- `build_tools(orders, docuask, now)` întoarce 4 unelte LangChain (`@tool`): `get_order`, `search_policies`,
+  `check_refund_eligibility`, `request_refund`.
+- Funcții ajutătoare: `own_order` (doar comenzile clientului curent), `_public` (doar câmpurile publice),
+  `_eligibility` (livrată + 30 de zile).
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Identitatea din `config: RunnableConfig`, nu argument | Parametrul nu apare în schema văzută de model; un model păcălit nu poate cere comenzile altcuiva (IDOR) |
+| „Nu există” = „nu e a ta” | Nu confirm că un număr de comandă există |
+| `_public` scoate `customer_id`, `internal_note` | Minimizarea datelor: modelul nu vede ce nu trebuie |
+| `request_refund` reverifică proprietarul și eligibilitatea | Modelul poate sări verificarea; comanda se poate schimba cât așteaptă aprobarea; regula stă unde se face acțiunea |
+| Cheie de idempotență `thread_id:order_id` | O rambursare pe comandă pe conversație, oricâte reluări |
+| `ServiceUnavailable` → text, nu excepție | Agentul răspunde politicos în loc să cadă |
+| Docstring-ul = descrierea pentru model | Modelul îl citește ca să aleagă unealta („ALWAYS call this before request_refund”) |
+| `now` injectabil | Regula de 30 de zile se testează fără să depind de ceas |
+
+#### Ce am verificat (rezultate reale)
+Uneltele rulate direct, fără model (eu am jucat rolul modelului), contra simulatorului de comenzi:
+```text
+what the model sees: {'get_order': ['order_id'], 'search_policies': ['question'], 'check_refund_eligibility': ['order_id'], 'request_refund': ['order_id', 'reason']}
+1) c-100, get_order 1002: {"id": "1002", "status": "shipped", ..., "carrier": "FastCourier", "eta": "2026-10-19", ...}
+2) c-100, get_order 1003: No order 1003 was found for this customer.
+3) c-100, get_order 9999: No order 9999 was found for this customer.
+4) c-100, eligibility 1001: {"order_id": "1001", "eligible": true, "reason": "delivered within the last 30 days"}
+5) c-200, eligibility 1003: {"order_id": "1003", "eligible": false, "reason": "it was delivered more than 30 days ago"}
+6) c-100, request_refund 1003: Order 1003 cannot be refunded.
+7) search_policies: The system is unavailable right now. Tell the customer to try again in a few minutes.
+```
+- Schema: **nicio unealtă nu primește `customer_id` sau `config`**.
+- 1): față de `curl` din Pas 7 lipsesc `customer_id` și `internal_note`.
+- 2) = 3): comanda lui c-200 arată exact ca una inexistentă.
+- 6): un „model păcălit” care cere direct rambursarea comenzii altcuiva → unealta refuză singură.
+- 7): DocuAsk oprit → după 2 încercări, text clar, nu excepție.
+- Fișierul are același sens ca referința (AST identic), `ruff` curat.
+
+#### Capcane
+- Nu da niciodată modelului un parametru de identitate.
+- Un `RunnableConfig` în semnătură e completat de LangChain la rulare; dacă unealta e apelată fără `config`,
+  `_customer` cade (testele și serviciul îl dau mereu).
+
+#### Cum o spun la interviu
+- „Modelul alege unealta și argumentele, dar nu are drepturi. Identitatea clientului vine din cererea autentificată,
+  prin configurația rulării; am verificat schema și modelul vede doar `order_id`. Comanda altcuiva arată exact ca una
+  inexistentă, câmpurile interne nu ajung la model, iar regulile de rambursare sunt reverificate când acțiunea chiar
+  rulează.”
+
+---

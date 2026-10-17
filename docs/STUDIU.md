@@ -3,7 +3,7 @@
 Citește-o de sus în jos, o dată, apoi folosește secțiunea 8 (auto-test). Dovezile, pas cu pas: `docs/JURNAL.md`.
 Varianta de 15 minute: `docs/STUDIU-SIMPLU.md`. Scriptul de interviu: `docs/INTERVIU.md`. Cartonașe: `docs/flashcards.html`.
 
-> **Unde sunt acum (2026-10-17): pașii 1–7 din 32 făcuți** (fundația și Faza B: `resilience.py` cu 7 teste, `clients.py`, `orders_mock.py`). Fișa descrie
+> **Unde sunt acum (2026-10-17): pașii 1–8 din 32 făcuți** (fundația, Faza B: `resilience.py` cu 7 teste, `clients.py`, `orders_mock.py`; `tools.py`). Fișa descrie
 > aplicația **întreagă**, ca să înveți de la început ce construiești. Cifrele marcate *(referință)* vin din rularea de
 > verificare a ghidului, nu din build-ul meu; le înlocuiesc cu ale mele când ajung la pasul respectiv.
 
@@ -168,7 +168,7 @@ deci agentul răspunde politicos în loc să cadă.
 | `resilience.py` | `CircuitBreaker` + `ResilientHttp` (timeout, retry, breaker) | ✅ Pas 5 |
 | `clients.py` | `OrdersClient`, `DocuAskClient` peste `ResilientHttp` | ✅ Pas 6 |
 | `orders_mock.py` | sistemul de comenzi simulat, cu „chaos mode” | ✅ Pas 7 |
-| `tools.py` | cele 4 unelte; autorizarea e **aici**, nu în prompt | Pas 8 |
+| `tools.py` | cele 4 unelte; autorizarea e **aici**, nu în prompt | ✅ Pas 8 |
 | `fake.py`, `llm.py` | model fals scriptat; fabrica de modele (fake / openai / azure) | Pașii 10–11 |
 | `agent.py` | `create_agent` + cele 4 middleware-uri + promptul de sistem | Pas 12 |
 | `store.py`, `ratelimit.py`, `service.py` | Mongo, Redis, cazurile de utilizare | Pașii 14–16 |
