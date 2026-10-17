@@ -3,7 +3,7 @@
 Citește-o de sus în jos, o dată, apoi folosește secțiunea 8 (auto-test). Dovezile, pas cu pas: `docs/JURNAL.md`.
 Varianta de 15 minute: `docs/STUDIU-SIMPLU.md`. Scriptul de interviu: `docs/INTERVIU.md`. Cartonașe: `docs/flashcards.html`.
 
-> **Unde sunt acum (2026-10-17): pașii 1–15 din 32 făcuți** (fazele A–D + `store.py` pe MongoDB + `ratelimit.py` pe Redis; 27 de teste fără containere). Fișa descrie
+> **Unde sunt acum (2026-10-17): pașii 1–16 din 32 făcuți** (fazele A–E: fundația, reziliența, uneltele, agentul, starea în MongoDB și Redis; 27 de teste). Fișa descrie
 > aplicația **întreagă**, ca să înveți de la început ce construiești. Cifrele marcate *(referință)* vin din rularea de
 > verificare a ghidului, nu din build-ul meu; le înlocuiesc cu ale mele când ajung la pasul respectiv.
 
@@ -171,7 +171,7 @@ deci agentul răspunde politicos în loc să cadă.
 | `tools.py` | cele 4 unelte; autorizarea e **aici**, nu în prompt | ✅ Pas 8 |
 | `fake.py`, `llm.py` | model fals scriptat; fabrica de modele (fake / openai / azure) | ✅ Pașii 10–11 |
 | `agent.py` | `create_agent` + cele 4 middleware-uri + promptul de sistem | ✅ Pas 12 |
-| `store.py`, `ratelimit.py`, `service.py` | Mongo, Redis, cazurile de utilizare | Pașii 14–16 |
+| `store.py`, `ratelimit.py`, `service.py` | Mongo, Redis, cazurile de utilizare | ✅ Pașii 14–16 |
 | `schemas.py`, `api.py`, `main.py` | contractul HTTP, autentificarea, rutele, pornirea | Pașii 17–19 |
 | `tests/` | *(referință)* 57 de teste pe MongoDB și Redis reale, 95 % acoperire | Pașii 9, 13, 21–24 |
 | `Dockerfile`, `docker-compose.yml`, `ci.yml` | livrare și CI | Pașii 25–29 |

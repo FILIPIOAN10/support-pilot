@@ -695,4 +695,57 @@ Ghidul spune „milisecunde”; pe Windows cifra reală e 0,3–0,6 s. Aplicați
   trebuie să fie și fail-fast: cu retry-ul implicit din redis-py un Redis căzut costa ~10 s pe cerere; cu clientul
   aplicației, timeout 0,3 s și fără retry, sub o secundă.”
 
+### Pas 16 — `service.py`: cazurile de utilizare · 2026-10-17
+
+#### Ce am făcut
+- `SupportService(agent, store)` cu trei operații, fără HTTP: `chat`, `decide`, `messages`; locul comun `_after_run`.
+- Excepții de business: `ConversationNotFound` (→ 404), `ApprovalPending` (→ 409), `NothingToApprove` (→ 404).
+- `Outcome(conversation_id, status, reply)`; `AWAITING_REPLY` = mesajul fix la pauză.
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Logica fără HTTP | Stratul API rămâne subțire; serviciul se rulează și se testează direct |
+| `config = {thread_id: conversația, customer_id: clientul}` | Checkpointer-ul salvează starea sub conversație; uneltele citesc clientul de aici, nu de la model |
+| Conversația altcuiva = inexistentă | Nu confirm că există (404, nu 403) |
+| `ApprovalPending` cât se așteaptă | Nu se amestecă mesaje noi într-o rulare oprită |
+| Mesaj fix la pauză, nu din model | Un model confuz nu poate spune „gata, banii sunt trimiși” înainte de aprobare |
+| `decide`: revendicare atomică → `Command(resume)` → `finish`; la eroare `release` | O singură decizie aplicată; o reluare eșuată nu blochează aprobarea |
+| `get_usage_metadata_callback()` + `touch($inc)` | Costul (tokenii) adunat pe conversație |
+| `messages()` ascunde apelurile de unelte | Clientul vede doar conversația, nu mecanica internă |
+
+#### Ce am verificat (rezultate reale, `MongoDBSaver` pe `sp-mongo`, baza temporară `supportpilot_try`, ștearsă)
+```text
+1) Outcome(..., status='open', reply='Order 1002 is shipped (carrier: FastCourier, estimated delivery: not available).')
+2) Outcome(..., status='awaiting_approval', reply='I have sent your refund request to a colleague for approval. ...')
+3) new message while waiting -> ApprovalPending (409)
+4) c-200 uses c-100's conversation -> ConversationNotFound (404)
+   pending approvals: [('c-100', {'order_id': '1001', 'reason': 'I want a refund for order 1001'})]
+--- restart: a brand-new service, agent and checkpointer ---
+5) Outcome(..., status='open', reply='Done. Refund RF-0001 is registered and pending.')
+6) customer sees: ('open', [{'role': 'customer', ...}, {'role': 'assistant', 'content': 'Done. Refund RF-0001 ...'}])
+7) usage in Mongo: {'input_tokens': 816, 'output_tokens': 13} | refunds: ['4adbaf83...:1001']
+   collections: ['approvals', 'checkpoint_writes', 'checkpoints', 'conversations']
+```
+- **Aprobare după un restart simulat** (serviciu, agent și checkpointer noi, aceeași bază): rularea s-a reluat din
+  MongoDB și rambursarea s-a creat. Pauza rezistă la restart.
+- Fișierul are același sens ca referința (AST identic), `ruff` curat, 27 de teste verzi; baza temporară ștearsă.
+
+#### Capcane
+- `invoke(..., version="v2")` e necesar ca să existe `result.interrupts`.
+- Tokenii modelului fals sunt estimați (~1 / 4 caractere); cu un model real vin de la furnizor.
+
+#### Cum o spun la interviu
+- „Logica stă într-un strat de servicii fără HTTP. La chat verific a cui e conversația și dacă e în așteptare, rulez
+  agentul cu thread id-ul conversației și cu clientul în configurație și număr tokenii. La pauză salvez aprobarea cu
+  argumentele exacte și răspund cu un mesaj fix. Decizia revendică atomic aprobarea și reia aceeași rulare cu
+  `Command(resume)`. Am demonstrat aprobarea după un restart simulat: agent nou, checkpointer nou, aceeași bază.”
+
+### ✅ Checkpoint E — starea
+- [x] pot explica de ce `claim_approval` e atomic și ce s-ar întâmpla fără el
+- [x] pot explica de ce un script Lua și nu doi pași `INCR` + `EXPIRE`
+- [x] pot spune de ce MongoDB aici și Postgres în Proiectul 1
+- [x] aprobare după restart, demonstrată pe MongoDB real
+- [x] commit pe fiecare pas (14, 15, 16)
+
 ---
