@@ -123,4 +123,37 @@ Regula de onestitate: spun „construit și testat local”, nu „în producți
 - „Secretele stau doar în `.env`, ignorat de git și de Docker. În repo e `.env.example`, care documentează fiecare
   setare. Dacă un secret ajunge în git, nu e de ajuns să-l ștergi: îl rotești, pentru că rămâne în istoric.”
 
+### Pas 4 — MongoDB și Redis pentru dezvoltare · 2026-10-17
+
+#### Ce am făcut
+- `docker run -d --name sp-mongo -p 27018:27017 mongo:8`
+- `docker run -d --name sp-redis -p 6380:6379 redis:7-alpine`
+- Porturile de pe calculator (27018, 6380) sunt exact cele din `config.py` (`mongo_url`, `redis_url`).
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Porturi nestandard 27018 / 6380 | Nu se ciocnesc cu alte instanțe locale pe 27017 / 6379 |
+| Containere fără volum | Sunt doar pentru dezvoltare; testele își pornesc containerele lor (Testcontainers) |
+| Fiecare bază are un motiv | Postgres+pgvector (Proiectul 1): documente și vectori. MongoDB: conversații și aprobări (documente întregi, formă care se schimbă, fără JOIN). Redis: contoare atomice cu expirare (rate limit) |
+
+#### Ce am verificat (rezultate reale)
+- `docker exec sp-redis redis-cli ping` → `PONG`
+- `docker exec sp-mongo mongosh --quiet --eval "db.hello().ok"` → `1`
+- Din aplicație, cu URL-urile din `get_settings()`: MongoDB **8.3.13** `{'ok': 1.0}`, Redis **7.4.11** `True`.
+
+#### Capcane
+- Portul 6380 e mapat și de containerele oprite `ticketbox-redis` și `ecommerce-redis`: nu le porni în același timp cu
+  `sp-redis` (`port is already allocated`).
+- `docker run` se face o singură dată; după un restart: `docker start sp-mongo sp-redis`.
+
+#### Cum o spun la interviu
+- „Fiecare bază de date e acolo pentru un motiv: Postgres cu pgvector pentru documente și vectori, MongoDB pentru
+  conversații și aprobări, Redis pentru contoarele de rate limit.”
+
+### ✅ Checkpoint A — fundația
+- [x] importul din Pas 1 afișează `ok`
+- [x] Mongo răspunde `1`, Redis răspunde `PONG`
+- [x] commit-uri pentru pașii 1–3 (urcate pe GitHub), Pas 4 = doar jurnal
+
 ---
