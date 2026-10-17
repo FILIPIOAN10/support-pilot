@@ -749,3 +749,35 @@ Ghidul spune „milisecunde”; pe Windows cifra reală e 0,3–0,6 s. Aplicați
 - [x] commit pe fiecare pas (14, 15, 16)
 
 ---
+
+## Faza F — API-ul
+
+### Pas 17 — `schemas.py`: contractul API-ului · 2026-10-17
+
+#### Ce am făcut
+- Scheme Pydantic separate pentru intrare (`ChatIn`, `DecisionIn`) și ieșire (`ChatOut`, `MessageOut`,
+  `ConversationOut`, `ActionOut`, `ApprovalOut`).
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| `message` 1–2000 caractere, `note` ≤ 500, `conversation_id` ≤ 64 | O cerere greșită e respinsă cu 422 înainte de model: nu costă tokeni, nu umple logurile |
+| `Literal` pentru `status`, `role`, `decision` | Stări fixe, cunoscute de client; o decizie poate fi doar `approve` / `reject` |
+| Scheme separate intrare / ieșire | `response_model` scoate din răspuns orice câmp intern |
+| `ApprovalOut.actions` cu `name` + `args` | Adminul vede argumentele exacte pe care le va executa agentul |
+
+#### Ce am verificat (rezultate reale)
+```text
+ok: message='Where is my order 1002?' conversation_id=None
+empty message      -> string_too_short: String should have at least 1 character
+2001 characters    -> string_too_long: String should have at most 2000 characters
+decision 'maybe'   -> literal_error: Input should be 'approve' or 'reject'
+status 'refunded'  -> literal_error: Input should be 'open' or 'awaiting_approval'
+```
+- Fișierul are același sens ca referința (AST identic), `ruff` curat.
+
+#### Cum o spun la interviu
+- „Contractul e în scheme Pydantic separate pentru intrare și ieșire, cu limite: o cerere greșită e respinsă cu 422
+  înainte să ajungă la model, deci nu costă nimic. Adminul vede argumentele exacte ale acțiunii pe care o aprobă.”
+
+---
