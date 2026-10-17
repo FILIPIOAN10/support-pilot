@@ -597,3 +597,50 @@ openai: ChatOpenAI gpt-4.1-mini timeout 30.0 retries 2
 - [x] commit pe fiecare pas (10–13)
 
 ---
+
+## Faza E — Starea: MongoDB, Redis, cazurile de utilizare
+
+### Pas 14 — `store.py`: conversațiile și aprobările în MongoDB · 2026-10-17
+
+#### Ce am făcut
+- Clasa `Store` peste două colecții: `conversations` (`customer_id`, `status`, `usage` cu tokenii) și `approvals`
+  (`actions`, `status` pending → deciding → done, audit `decided_by` / `decided_at`).
+- Metode: `ensure_indexes`, `new_conversation`, `get_conversation`, `touch` (stare + `$inc` pe tokeni),
+  `open_approval`, `pending_approvals`, **`claim_approval`** (atomic), `release_approval`, `finish_approval`.
+- Mesajele conversației nu stau aici: le salvează checkpointer-ul LangGraph, în aceeași bază.
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| MongoDB pentru conversații și aprobări | Document întreg, formă care se schimbă, fără JOIN-uri |
+| `$inc` pentru tokeni | Atomic, fără citire-modificare-scriere; costul pe conversație nu se pierde la rulări simultane |
+| `find_one_and_update(pending → deciding)` | Revendicare atomică: doi admini simultan → exact unul câștigă |
+| Starea intermediară `deciding` + `release_approval` | Dacă reluarea agentului eșuează, aprobarea revine în coadă, nu rămâne blocată |
+| `finish_approval` cu `decided_by`, `decided_at`, `note` | Audit: cine a decis ce și când |
+| `ensure_indexes` la pornire | Idempotent; „conversațiile unui client” și „aprobările în așteptare, cele mai vechi primele” |
+
+#### Ce am verificat (rezultate reale, pe `sp-mongo`, în baza temporară `supportpilot_try`, ștearsă la final)
+```text
+indexes: ['_id_', 'conversation_id_1', 'status_1_requested_at_1']
+conversation: c-100 awaiting_approval {'input_tokens': 320, 'output_tokens': 45}
+pending: 1
+claims: [('ion', True), ('maria', False)] -> winners: 1
+after release: pending
+finished: done approve maria | pending now: 0
+```
+- `$inc`: 120 + 200 = 320, 30 + 15 = 45.
+- Doi admini porniți în același moment cu `threading.Barrier(2)` → **exact un câștigător**.
+- `release` → înapoi în `pending`; `finish` → `done`, cu auditul.
+- Fișierul are același sens ca referința (AST identic), `ruff` curat, 27 de teste verzi; baza temporară nu a rămas.
+
+#### Capcane
+- `find_one` + `update_one` separate nu sunt atomice: ambii admini ar putea citi `pending` și „câștiga”. A doua plasă
+  rămâne cheia de idempotență spre sistemul de comenzi (Pas 6).
+- Verificările pe baza reală se fac într-o bază separată, nu în `supportpilot`.
+
+#### Cum o spun la interviu
+- „În MongoDB țin conversațiile, cu tokenii consumați, și aprobările, cu auditul. Tokenii se adună cu `$inc`, atomic.
+  Revendicarea unei aprobări e un `find_one_and_update` din `pending` în `deciding`: am verificat cu două thread-uri
+  pornite simultan și câștigă exact unul. Dacă reluarea eșuează, aprobarea revine în `pending`.”
+
+---

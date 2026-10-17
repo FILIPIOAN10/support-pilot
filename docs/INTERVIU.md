@@ -5,7 +5,7 @@ Repo: https://github.com/FILIPIOAN10/support-pilot · dovezi pas cu pas: `docs/J
 **Regula de aur:** „L-am construit și testat local și în containere, cu CI. Nu e în producție și nu a rulat cu un model
 real.” Spui exact ce ai verificat și ce nu.
 
-> **Progres (2026-10-17): pașii 1–13 din 32.** Cifrele marcate *(referință)* vin din rularea de verificare a ghidului;
+> **Progres (2026-10-17): pașii 1–14 din 32.** Cifrele marcate *(referință)* vin din rularea de verificare a ghidului;
 > le înlocuiesc cu ale mele când ajung la pasul respectiv. Până atunci **nu le spun ca fiind ale mele**.
 
 ---
@@ -55,7 +55,7 @@ cu Redis.”
 | Rate limit | 20 de mesaje / minut / client, fail-open, timeout Redis 0,3 s | `config.py`, `api.py` |
 | Teste la final | 57, acoperire 95 %, MongoDB și Redis reale | *(referință)* |
 | Aprobare după restart | reușită după `docker compose restart api` | *(referință)* |
-| Doi admini simultan | o singură rambursare (test cu două thread-uri și o barieră) | *(referință)* |
+| Doi admini simultan | revendicarea în Mongo: **exact 1 câștigător** din 2 thread-uri pornite cu o barieră | build-ul meu, Pas 14 (testul complet „o singură rambursare”: referință, Faza G) |
 
 ## 4. Deciziile pe care le poți apăra
 

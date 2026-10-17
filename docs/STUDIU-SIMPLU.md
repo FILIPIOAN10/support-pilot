@@ -1,6 +1,6 @@
 # SupportPilot — varianta simplă (de învățat în 15 minute)
 
-Detaliile sunt în `docs/STUDIU.md`; aici ai doar esența. Progres: pașii 1–13 din 32 (2026-10-17).
+Detaliile sunt în `docs/STUDIU.md`; aici ai doar esența. Progres: pașii 1–14 din 32 (2026-10-17).
 
 ---
 
