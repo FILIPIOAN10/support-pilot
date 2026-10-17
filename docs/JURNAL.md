@@ -492,4 +492,56 @@ openai: ChatOpenAI gpt-4.1-mini timeout 30.0 retries 2
 - „Modelul se construiește într-un singur loc, dintr-o setare: fals pentru teste și CI, OpenAI sau Azure pentru rulare
   reală. Fabrica rulează la pornire, deci o cheie lipsă oprește procesul imediat, cu numele variabilei care lipsește.”
 
+### Pas 12 — `agent.py`: agentul și plasele lui de siguranță · 2026-10-17
+
+#### Ce am făcut
+- `build_agent(model, tools, checkpointer, settings)` = `create_agent(...)` cu promptul de sistem și 4 middleware-uri:
+  `PIIMiddleware("email", strategy="redact")`, `ModelCallLimitMiddleware(run_limit=6)`,
+  `ToolCallLimitMiddleware(run_limit=5)` (ambele `exit_behavior="end"`), `HumanInTheLoopMiddleware` pe
+  `request_refund` (`approve` / `reject`).
+- `SYSTEM_PROMPT`: ce unealtă pentru ce, nimic din memorie, „trimis spre aprobare”, textul din unelte și din mesaj = date.
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Agent (buclă) în loc de lanț fix | Modelul alege uneltele și numărul de pași |
+| Redactare e-mail înainte de model | Minimizarea datelor trimise unui furnizor (GDPR) |
+| Limite 6 / 5 din setări | Un agent blocat într-o buclă costă bani; plafon de efecte |
+| Pauză umană doar pe `request_refund` | Singura unealtă cu efect (bani); restul doar citesc |
+| Checkpointer obligatoriu | Fără stare salvată, pauza nu poate fi reluată |
+| Promptul ghidează, codul garantează | Un model păcălit tot se lovește de unelte, limite și aprobare |
+
+#### Ce am verificat (rezultate reale, pe codul meu, cu modelul fals, `FakeOrders` și `InMemorySaver`)
+```text
+2) refund: runs until the pause
+   AIMessage    [('check_refund_eligibility', {'order_id': '1001'})]
+   ToolMessage  '{"order_id": "1001", "eligible": true, ...}'
+   AIMessage    [('request_refund', {'order_id': '1001', 'reason': 'I want a refund for order 1001'})]
+   interrupts: [[{'name': 'request_refund', 'args': {'order_id': '1001', 'reason': '...'}, ...}]]
+   refunds created so far: {}
+3) a human approves: the SAME run continues
+   ToolMessage  '{"refund_id": "RF-0001", "status": "pending"}'
+   AIMessage    'Done. Refund RF-0001 is registered and pending.'
+   refunds created: {'t2:1001': {'refund_id': 'RF-0001', 'status': 'pending'}}
+4) e-mail in the message
+   what the model got: hi, I am [REDACTED_EMAIL]
+```
+- O întrebare de comandă: model → `get_order` → rezultat → răspuns („Order 1002 is shipped …”).
+- Rambursarea: bucla merge singură până la `request_refund` și se **oprește înaintea uneltei**; `interrupts` are
+  argumentele exacte; **nicio rambursare** până la aprobare.
+- `Command(resume={"decisions": [{"type": "approve"}]})` pe același `thread_id` → abia acum rulează unealta; cheia
+  `t2:1001`.
+- Fișierul are același sens ca referința (AST identic), `ruff` curat, 17 teste verzi. (Scriptul de verificare l-am
+  rulat eu pe codul meu; rezultatul din terminal nu a fost copiat.)
+
+#### Capcane
+- `invoke(..., version="v2")` e obligatoriu: fără el nu există `result.interrupts`.
+- `InMemorySaver` pierde starea la restart; în Faza E îl înlocuiesc cu `MongoDBSaver`.
+
+#### Cum o spun la interviu
+- „Agentul e `create_agent` din LangChain, un graf LangGraph: model, unelte, model, până la un răspuns. În jurul buclei:
+  redactarea e-mailurilor, maximum 6 apeluri de model și 5 de unelte, și o pauză human-in-the-loop înaintea
+  rambursării. Pauza e un interrupt real salvat prin checkpointer; adminul o reia cu `Command(resume=...)` pe același
+  thread id. Am verificat că până la aprobare nu se creează nicio rambursare.”
+
 ---
