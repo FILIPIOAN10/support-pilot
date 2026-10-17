@@ -457,4 +457,39 @@ usage: {'input_tokens': 28, 'output_tokens': 1, 'total_tokens': 29}
   real. Îmi dă determinism: același mesaj produce mereu aceeași secvență de unelte. Dovedește garanțiile sistemului,
   nu calitatea alegerilor unui model real.”
 
+### Pas 11 — `llm.py`: fabrica modelului · 2026-10-17
+
+#### Ce am făcut
+- `make_chat_model(settings)`: `fake` → `ScriptedSupportModel`, `openai` → `ChatOpenAI`, `azure` → `AzureChatOpenAI`.
+- `_need(value, name)`: o setare lipsă → `ProviderConfigError` cu numele variabilei; scoate cheia din `SecretStr` doar
+  când o dă clientului.
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Un singur loc construiește modelul | Restul aplicației primește doar `BaseChatModel`; schimb furnizorul dintr-o variabilă |
+| Eroare cu numele variabilei, apelată la pornire | Fail fast: o cheie lipsă oprește procesul imediat, nu la primul client |
+| `timeout=30`, `max_retries=2` | Și apelul LLM e o dependență externă |
+| `base_url` opțional | Testul de contract rulează clasa reală `ChatOpenAI` contra unui server local (Faza G) |
+| Azure cere `azure_deployment` | La Azure alegi deployment-ul tău, nu numele modelului |
+
+#### Ce am verificat (rezultate reale)
+Rulat de mine pe codul meu (în terminal am creat și șters `try_llm.py` fără să-l rulez):
+```text
+fake  : ScriptedSupportModel
+openai: OPENAI_API_KEY is required for this LLM_PROVIDER
+azure : AZURE_CHAT_DEPLOYMENT is required for this LLM_PROVIDER
+openai: ChatOpenAI gpt-4.1-mini timeout 30.0 retries 2
+```
+- Cu o cheie de umplutură, `ChatOpenAI` se **construiește** fără niciun apel de rețea.
+- Fișierul are același sens ca referința (AST identic), `ruff` curat, 17 teste verzi.
+
+#### Capcane
+- Modelul ales trebuie să știe **tool calling** (`gpt-4.1-mini`, `gpt-4o-mini` știu).
+- O variabilă `OPENAI_API_KEY` globală în Windows ar face cazul „lipsește cheia” să nu mai dea eroare.
+
+#### Cum o spun la interviu
+- „Modelul se construiește într-un singur loc, dintr-o setare: fals pentru teste și CI, OpenAI sau Azure pentru rulare
+  reală. Fabrica rulează la pornire, deci o cheie lipsă oprește procesul imediat, cu numele variabilei care lipsește.”
+
 ---
