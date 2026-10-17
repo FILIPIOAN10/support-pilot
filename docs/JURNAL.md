@@ -828,4 +828,46 @@ status 'refunded'  -> literal_error: Input should be 'open' or 'awaiting_approva
   și `Retry-After`; conversația altcuiva dă 404, nu 403; o conversație în așteptare dă 409; al doilea admin pe aceeași
   aprobare primește 404. Readiness-ul cere MongoDB, dar doar raportează Redis, pentru că limitatorul e fail-open.”
 
+### Pas 19 — `main.py`: aplicația pornește · 2026-10-17
+
+#### Ce am făcut
+- `lifespan`: la pornire construiește indecșii (`get_store`) și agentul (`get_service`) → fail fast.
+- Request id pe fiecare cerere (`X-Request-ID` primit sau generat), ținut într-un `ContextVar` și pus de un
+  `logging.Filter` în **toate** liniile de log; întors clientului în header; timpul de răspuns logat (fără `/health`).
+- `unhandled`: orice excepție neprevăzută → 500 `"Internal error"`, detaliile doar în log.
+
+#### Ce am schimbat față de ghid (greșeală găsită)
+În codul din ghid, `request_id_var.reset(token)` rulează în `finally` **înainte** de linia de log a cererii, care apărea
+cu `[-]` (`INFO supportpilot [-] POST /v1/chat -> 200 in 2151 ms`). Am mutat logul în `try` și resetarea după el →
+`INFO supportpilot [demo-123] POST /v1/chat -> 200 in 177 ms`. Verificat ambele variante.
+
+#### Ce am descoperit (măsurat, Windows)
+Cu `ORDERS_BASE_URL=http://localhost:9000`, prima cerere pe o conexiune nouă spre simulator dura **~2,1 s** (Windows
+încearcă întâi IPv6 `::1`, iar uvicorn ascultă doar pe IPv4), următoarele ~60 ms. Cu `127.0.0.1`: **~0,2 s**. Am pus
+`127.0.0.1` pentru comenzi și DocuAsk în `.env` (local, nu în git); `.env.example` rămâne cu `localhost`.
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Agentul construit la pornire | O cheie lipsă sau un Mongo căzut opresc procesul; pod-ul nu devine ready |
+| `ContextVar` pentru request id | Fiecare cerere are contextul ei, chiar și în paralel (un `global` le-ar amesteca) |
+| Id-ul în toate logurile, inclusiv `httpx` | O cerere se urmărește prin tot sistemul (gateway → SupportPilot → comenzi) |
+| 500 generic | Clientul nu vede stack trace-uri sau detalii interne |
+
+#### Ce am verificat (rezultate reale)
+- Pornire: `started provider=fake`, `Application startup complete`; `curl.exe localhost:8001/health/ready` →
+  `{"status":"ready","redis":"up"}`.
+- Chat cu `X-Request-ID: demo-123` pe aplicația mea pornită (trimis de mine): `HTTP/1.1 200 OK`,
+  `x-request-id: demo-123`, `"reply":"Order 1002 is shipped (carrier: FastCourier, estimated delivery: 2026-10-19)."`,
+  în 0,15 s.
+- Fail fast: `LLM_PROVIDER=openai` fără cheie → `ProviderConfigError: OPENAI_API_KEY is required for this
+  LLM_PROVIDER` + `Application startup failed. Exiting.` (și, pe copia de probă, Mongo pe un port închis →
+  `ServerSelectionTimeoutError` la pornire).
+- `main.py` are același sens ca varianta corectată (AST identic), `ruff` curat, 27 de teste verzi.
+
+#### Cum o spun la interviu
+- „La pornire aplicația construiește agentul și indecșii, deci o configurație greșită o oprește imediat. Fiecare
+  cerere are un request id într-un `ContextVar`, prezent în toate logurile, inclusiv în apelurile spre alte servicii.
+  Am găsit că linia de log a cererii pierdea id-ul, pentru că resetarea se făcea înainte; am mutat-o după log.”
+
 ---
