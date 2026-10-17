@@ -367,4 +367,51 @@ what the model sees: {'get_order': ['order_id'], 'search_policies': ['question']
   inexistentă, câmpurile interne nu ajung la model, iar regulile de rambursare sunt reverificate când acțiunea chiar
   rulează.”
 
+### Pas 9 — Testele uneltelor · 2026-10-17
+
+#### Ce am făcut
+- `tests/conftest.py` **minimal** (îl înlocuiesc în Faza G): fixturile `settings` (ignoră `.env`), `orders`
+  (`FakeOrders`), `docuask` (`FakeDocuAsk`), `tools`. Serviciile false au aceleași metode ca clienții reali și un
+  comutator `down` care aruncă `ServiceUnavailable`.
+- `tests/test_tools.py`: 9 funcții de test (una cu `parametrize` pe 2 cazuri) = 10 teste.
+
+#### Garanțiile testate
+| Test | Garanția |
+|---|---|
+| internal fields | `internal_note` și `customer_id` nu ajung la model |
+| someone else's order = missing one | același text, doar alt număr |
+| identity is not an argument | schema lui `get_order` e exact `["order_id"]`; un parametru de identitate adăugat vreodată → testul pică |
+| eligibility rules (×2) + 45 days | livrată în 30 de zile → da; expediată → nu; 45 de zile → nu |
+| request_refund rechecks | un model păcălit care sare verificarea → **nicio** rambursare (`orders.refunds == {}`) |
+| refunding twice | aceeași conversație → o rambursare, cheia `conv-1:1001` |
+| policies | răspuns cu sursă; refuz explicit, nu ghicit |
+| service down | toate cele 4 unelte întorc text „unavailable”, nu excepții |
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Unelte testate fără model și fără rețea | Rapid (0,2 s), determinist, exact pe regulile de securitate |
+| Servicii false cu aceleași metode | Uneltele depind de metode de business, nu de HTTP (decizia din Pas 6) |
+| `Settings(_env_file=None)` | Rezultatul nu depinde de `.env`-ul meu local |
+| Test pe **schema** uneltei | Garanția anti-IDOR e verificată automat, nu doar promisă |
+
+#### Ce am verificat (rezultate reale)
+- `uv run pytest -q` → **`17 passed in 0.20s`** (7 resilience + 10 unelte), fără containere.
+- Ambele fișiere au același sens ca referința (AST identic); `ruff check` curat, `ruff format` aplicat.
+
+#### Capcane
+- **Greșeală în ghid:** PDF-ul zice că `uv run pytest tests/test_tools.py -q` dă 17. Dă **10** (doar fișierul uneltelor);
+  17 vine din `uv run pytest -q`.
+
+#### Cum o spun la interviu
+- „Testez uneltele direct, fără model, cu servicii false. Testele sunt lista mea de garanții: modelul nu vede câmpurile
+  interne, comanda altcuiva arată ca una inexistentă, schema conține doar `order_id`, un model compromis nu poate crea o
+  rambursare nepermisă, iar un serviciu căzut dă un mesaj clar, nu o excepție.”
+
+### ✅ Checkpoint C — uneltele
+- [x] testele uneltelor trec (17 în total)
+- [x] pot explica de ce identitatea clientului nu e argument
+- [x] pot explica de ce `request_refund` reverifică eligibilitatea
+- [x] commit pe fiecare pas (8, 9)
+
 ---

@@ -5,7 +5,7 @@ Repo: https://github.com/FILIPIOAN10/support-pilot · dovezi pas cu pas: `docs/J
 **Regula de aur:** „L-am construit și testat local și în containere, cu CI. Nu e în producție și nu a rulat cu un model
 real.” Spui exact ce ai verificat și ce nu.
 
-> **Progres (2026-10-17): pașii 1–8 din 32.** Cifrele marcate *(referință)* vin din rularea de verificare a ghidului;
+> **Progres (2026-10-17): pașii 1–9 din 32.** Cifrele marcate *(referință)* vin din rularea de verificare a ghidului;
 > le înlocuiesc cu ale mele când ajung la pasul respectiv. Până atunci **nu le spun ca fiind ale mele**.
 
 ---
@@ -46,7 +46,7 @@ cu Redis.”
 
 | Ce | Cifră | Condiție / sursă |
 |---|---|---|
-| Teste făcute de mine până acum | **7** (`resilience.py`), 0,18 s | build-ul meu, Pas 5 |
+| Teste făcute de mine până acum | **17** (7 resilience + 10 unelte), 0,20 s, fără containere | build-ul meu, Pas 9 |
 | Breaker în fața unui serviciu căzut | cererile 1–2: ~3,7–3,8 s fiecare (3 încercări); cererea 3: **0,00 s**, fără apel | build-ul meu, Pas 6 (`BREAKER_FAILURES=2`, `HTTP_CONNECT_TIMEOUT=0.5`) |
 | Idempotența rambursării | aceeași cheie de două ori → același `RF-0001`; altă cheie → `RF-0002` | build-ul meu, Pas 7 (clienți reali contra simulatorului) |
 | Serviciu care întoarce 503 | 3 încercări, apoi „unavailable” în 0,77 s | build-ul meu, Pas 7 (`/chaos fail`) |

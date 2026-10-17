@@ -3,7 +3,7 @@
 Citește-o de sus în jos, o dată, apoi folosește secțiunea 8 (auto-test). Dovezile, pas cu pas: `docs/JURNAL.md`.
 Varianta de 15 minute: `docs/STUDIU-SIMPLU.md`. Scriptul de interviu: `docs/INTERVIU.md`. Cartonașe: `docs/flashcards.html`.
 
-> **Unde sunt acum (2026-10-17): pașii 1–8 din 32 făcuți** (fundația, Faza B: `resilience.py` cu 7 teste, `clients.py`, `orders_mock.py`; `tools.py`). Fișa descrie
+> **Unde sunt acum (2026-10-17): pașii 1–9 din 32 făcuți** (fazele A–C: fundația, reziliența, clienții, simulatorul, uneltele; 17 teste). Fișa descrie
 > aplicația **întreagă**, ca să înveți de la început ce construiești. Cifrele marcate *(referință)* vin din rularea de
 > verificare a ghidului, nu din build-ul meu; le înlocuiesc cu ale mele când ajung la pasul respectiv.
 

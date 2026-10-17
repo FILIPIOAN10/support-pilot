@@ -1,6 +1,6 @@
 # SupportPilot — varianta simplă (de învățat în 15 minute)
 
-Detaliile sunt în `docs/STUDIU.md`; aici ai doar esența. Progres: pașii 1–8 din 32 (2026-10-17).
+Detaliile sunt în `docs/STUDIU.md`; aici ai doar esența. Progres: pașii 1–9 din 32 (2026-10-17).
 
 ---
 
@@ -51,7 +51,7 @@ cu cheie de idempotență.
 | Circuit breaker | se deschide după **5** eșecuri, stă deschis **30 s**, apoi **1** apel de probă |
 | Rate limit | **20** de mesaje pe minut pe client, Redis, fail-open |
 | Porturi | API 8001, comenzi 9000, Mongo **27018**, Redis **6380** |
-| Teste | acum **7** (resilience); ținta *(referință)*: 57, 95 % acoperire |
+| Teste | acum **17** (7 resilience + 10 unelte); ținta *(referință)*: 57, 95 % acoperire |
 
 ## 6. Cinci răspunsuri de o frază (EN)
 
