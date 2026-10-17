@@ -544,4 +544,56 @@ openai: ChatOpenAI gpt-4.1-mini timeout 30.0 retries 2
   rambursării. Pauza e un interrupt real salvat prin checkpointer; adminul o reia cu `Command(resume=...)` pe același
   thread id. Am verificat că până la aprobare nu se creează nicio rambursare.”
 
+### Pas 13 — Testele agentului, fără containere · 2026-10-17
+
+#### Ce am făcut
+- `tests/test_agent.py`: 10 teste pe bucla reală (`create_agent`), cu modelul scriptat, `InMemorySaver` și serviciile
+  false din `conftest.py`.
+- Trei „modele de test” derivate din cel fals: `Rogue` (păcălit: cere rambursarea comenzii 1003 a altui client),
+  `Looping` (blocat: cere `get_order` la nesfârșit), `Recording` (notează tot ce primește modelul).
+
+#### Garanțiile testate
+| # | Test | Garanția |
+|---|---|---|
+| 1 | order question | `get_order`, răspuns din rezultat, fără pauză |
+| 2 | policy question | `search_policies`, răspuns cu „30 days” |
+| 3 | refund | secvența exactă `[check_refund_eligibility, request_refund]`, pauză, **nimic creat** |
+| 4 | approval | aceeași rulare continuă, rambursare cu cheia `r2:1001` |
+| 5 | rejection | nicio rambursare, clientul află motivul („Used item.”) |
+| 6 | ineligible (45 de zile) | nu ajunge la om, nicio pauză |
+| 7 | **compromised model** | **omul aprobă și unealta tot refuză**: `orders.refunds == {}` |
+| 8 | stuck in a loop | limitele opresc bucla (≤ 6 apeluri de model) |
+| 9 | e-mail | modelul nu vede adresa, vede `[REDACTED_EMAIL]` |
+| 10 | per thread | stările conversațiilor sunt separate pe `thread_id` |
+
+#### Ce am verificat (rezultate reale)
+- `uv run pytest tests/test_agent.py -v` → **10 PASSED**, `10 passed in 1.02s`.
+- `uv run pytest -q` → **`27 passed in 1.07s`** (7 resilience + 10 unelte + 10 agent), fără containere.
+- Fișierul are același sens ca referința (AST identic), `ruff` curat.
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Modele „rele” scrise anume (`Rogue`, `Looping`) | Un model real nu se poate forța să fie păcălit sau blocat la cerere; garanțiile se dovedesc cu el scriptat |
+| `InMemorySaver` aici, `MongoDBSaver` în Faza E | Bucla se testează în ~1 s; persistența se testează separat, cu baza reală |
+| Verific secvența exactă de unelte | Modelul fals e determinist, deci ordinea e o garanție, nu un noroc |
+
+#### Capcane
+- Testul 7 arată că **nici aprobarea umană nu e de ajuns**: omul poate aproba din greșeală. Ultima apărare e unealta,
+  care verifică proprietarul la execuție (apărare în straturi).
+- Câmpurile noi pe un model LangChain se declară pydantic (`Field(default_factory=list)`), nu în `__init__`.
+
+#### Cum o spun la interviu
+- „Testez agentul fără containere, cu un checkpointer în memorie și un model scriptat. Am și modele «rele» scrise
+  anume: unul compromis, care cere rambursarea comenzii altcuiva — omul aprobă, iar unealta tot refuză — și unul
+  blocat într-o buclă, pe care îl opresc limitele. Verific și că e-mailul nu ajunge la model și că până la aprobare nu
+  se creează nimic.”
+
+### ✅ Checkpoint D — agentul
+- [x] `test_agent.py`: 10 teste trec (27 în total)
+- [x] pot explica diferența dintre lanț (DocuAsk) și agent (SupportPilot)
+- [x] pot spune la ce servește fiecare din cele 4 middleware-uri
+- [x] pot explica ce NU dovedește un model scriptat
+- [x] commit pe fiecare pas (10–13)
+
 ---
