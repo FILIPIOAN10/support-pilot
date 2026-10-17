@@ -93,4 +93,34 @@ Regula de onestitate: spun „construit și testat local”, nu „în producți
   poate consuma bani la nesfârșit.”
 - „Timeout-urile spre serviciile externe sunt mereu explicite: 2 secunde conectare, 8 citire.”
 
+### Pas 3 — `.env.example`, `.gitignore`, `.dockerignore` · 2026-10-17
+
+#### Ce am făcut
+- `.env.example` (în git): documentează fiecare setare; numele = câmpurile din `config.py` cu majuscule
+  (`MAX_TOOL_CALLS` → `max_tool_calls`). Cheile reale apar doar comentate.
+- `.gitignore`: `.venv/`, `__pycache__/`, cache-uri, `.coverage`, **`.env`**.
+- `.dockerignore`: în plus față de `.gitignore` scoate `.git`, `tests` și `shop-docs` din imagine.
+- `.env` local, copiat din `.env.example` (nu intră în git).
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| `.env` ignorat, `.env.example` commitat | Setările sunt documentate, secretele nu ajung în istoric (repo-ul e public) |
+| Valori de dev = valorile implicite din `config.py` | Aplicația pornește și fără `.env`; fișierul doar arată ce se poate schimba |
+| `.dockerignore` separat | Imaginea nu primește `.venv` (sute de MB), `.git`, `.env` cu chei sau testele |
+
+#### Ce am verificat (rezultate reale)
+- După `Copy-Item .env.example .env`, `git status --short` arată doar `.dockerignore`, `.env.example`, `.gitignore`:
+  `.env` și `__pycache__/` sunt ignorate (`git check-ignore -v` → `.gitignore:7:.env`, `.gitignore:2:__pycache__/`).
+- Comentariile de pe același rând din `.env` sunt ignorate la citire: `admin_api_key` → `'dev-admin-key'`.
+- Conținutul e identic cu referința (am adăugat doar linia goală finală).
+
+#### Capcane
+- `.gitignore` nu scoate un fișier deja urmărit de git: ar trebui `git rm --cached .env`, iar cheia, fiind publicată,
+  **rotită** (rămâne în istoric).
+
+#### Cum o spun la interviu
+- „Secretele stau doar în `.env`, ignorat de git și de Docker. În repo e `.env.example`, care documentează fiecare
+  setare. Dacă un secret ajunge în git, nu e de ajuns să-l ștergi: îl rotești, pentru că rămâne în istoric.”
+
 ---
