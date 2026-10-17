@@ -214,4 +214,46 @@ interviu, RO + EN), `docs/flashcards.html` (35 de cartonașe; se deschide în br
   singur apel de probă.”
 - „Retry-ul pe un POST cu efect e periculos; de aceea rambursarea trimite o cheie de idempotență.”
 
+### Pas 6 — `clients.py`: clienții pentru sistemul de comenzi și DocuAsk · 2026-10-17
+
+#### Ce am făcut
+- `OrdersClient` cu `get_order` (404 → `None`) și `create_refund` (POST cu header `Idempotency-Key`).
+- `DocuAskClient` cu `ask` (`POST /v1/ask` spre Proiectul 1).
+- `make_orders_client` / `make_docuask_client`: construiesc fiecare client din `Settings`, cu `ResilientHttp` și
+  **breaker propriu**.
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Metode cu nume de business | Uneltele nu știu de HTTP, chei, retry sau breaker |
+| `NotFound` → `None` în `get_order` | „Nu există” e un răspuns normal, nu o eroare |
+| `Idempotency-Key` la `create_refund` | Un retry sau un dublu-click întoarce aceeași rambursare, nu una nouă |
+| Breaker separat pe serviciu | Dacă pică DocuAsk, comenzile merg în continuare |
+| DocuAsk: citire 28 s (8 + 20), 2 încercări | Un răspuns LLM e lent, iar repetarea lui costă bani |
+| Clientul primește `ResilientHttp` gata construit | Dependency injection: în teste îi dai un transport fals, fără setări |
+
+#### Ce am verificat (rezultate reale, pe codul meu)
+Sistemul de comenzi nu exista încă (port 9000 închis) = „serviciul a picat”. Cu `BREAKER_FAILURES=2` și
+`HTTP_CONNECT_TIMEOUT=0.5` (demonstrația scurtată din configurare, fără să schimb codul):
+```text
+orders timeout:  Timeout(connect=0.5, read=8.0, write=8.0, pool=8.0)
+docuask timeout: Timeout(connect=0.5, read=28.0, write=28.0, pool=28.0)
+call 1: orders is unavailable | breaker=closed | 3.70s
+call 2: orders is unavailable | breaker=open | 3.83s
+call 3: orders is temporarily unavailable | breaker=open | 0.00s
+```
+- Cererile 1–2: câte 3 încercări cu backoff (~4 s). După a doua, breaker-ul e `open`.
+- Cererea 3: **0,00 s**, fără apel de rețea, mesaj „temporarily”: a răspuns breaker-ul.
+- Cu valorile implicite (5 eșecuri, 2 s) aceeași demonstrație durează ~67 s.
+- Fișierul are același sens ca referința (AST identic); `ruff check` curat, `ruff format` aplicat.
+
+#### Capcane
+- Pe Windows, un port închis pe `localhost` dă `ConnectTimeout` (se așteaptă tot timeout-ul), nu un refuz imediat.
+- Header-ele HTTP nu țin cont de litere mari/mici: `X-Api-Key` (comenzi) și `X-API-Key` (DocuAsk) merg amândouă.
+
+#### Cum o spun la interviu
+- „Fiecare serviciu extern are clientul lui, cu metode cu nume de business, timeout-urile și breaker-ul lui. Serviciul
+  RAG are timp de citire mai lung și mai puține retry-uri, pentru că un apel LLM e lent și costă. Am demonstrat
+  breaker-ul: după două cereri eșuate, a treia a fost respinsă în zero secunde, fără apel de rețea.”
+
 ---
