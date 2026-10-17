@@ -157,3 +157,58 @@ Regula de onestitate: spun „construit și testat local”, nu „în producți
 - [x] commit-uri pentru pașii 1–3 (urcate pe GitHub), Pas 4 = doar jurnal
 
 ---
+
+## Faza B — Servicii externe fără bătăi de cap
+
+### Pas 5 — `resilience.py`: timeout, retry, circuit breaker · 2026-10-17
+
+#### Ce am făcut
+- `src/supportpilot/resilience.py`: trei excepții (`Transient`, `NotFound`, `ServiceUnavailable`), un
+  `CircuitBreaker` și `ResilientHttp` (client `httpx` cu timeout explicit + retry `tenacity` + breaker), câte o instanță
+  pe fiecare serviciu extern.
+- `tests/test_resilience.py`: 7 teste cu `httpx.MockTransport` (server în memorie) și un ceas fals.
+
+#### Cum funcționează
+```text
+ closed ──(N eșecuri la rând)──► open ──(trec reset_seconds)──► half-open ──(1 apel de probă)──┬─ reușit ─► closed
+                                                                                                └─ eșuat ──► open
+```
+| Răspuns | Retry? | Breaker | Ce vede aplicația |
+|---|---|---|---|
+| 5xx, 429, eroare de rețea | da, backoff exponențial + jitter (~0,2 / 0,4 / 0,8 s, max 2 s) | eșec | `ServiceUnavailable("orders is unavailable")` |
+| 404 | nu | succes (serviciul e sănătos) | `NotFound` → clientul întoarce `None` |
+| alt 4xx (401, 400) | nu (greșeala e a mea) | succes | `ServiceUnavailable("... rejected the request")` |
+| breaker deschis | — | — | `ServiceUnavailable("... temporarily unavailable")` **fără apel de rețea** |
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Timeout explicit `Timeout(8, connect=2)` | Un serviciu blocat nu-mi ține thread-urile la nesfârșit |
+| Retry doar pe erori tranzitorii | Repetarea unui 401 sau 404 nu poate ajuta |
+| Jitter la backoff | Clienții nu reîncearcă toți în aceeași milisecundă (thundering herd) |
+| Half-open lasă **un singur** apel de probă | Un serviciu abia repornit nu e lovit de toate cererile odată |
+| `threading.Lock` în breaker | FastAPI rulează funcțiile sincrone pe mai multe thread-uri |
+| Ceas injectabil | Testul „sare” 31 s fără `sleep` |
+| Mesaje de eroare sigure | Fără detalii interne spre model sau client |
+
+#### Ce am verificat (rezultate reale)
+- `uv run pytest tests/test_resilience.py -q` → `7 passed in 0.18s`
+- `ruff check` curat, `ruff format` aplicat.
+- Codul e identic cu referința ca **sens** (AST identic); diferă doar împărțirea pe rânduri (vezi Capcane).
+
+#### Capcane
+- **Retry pe un POST neidempotent dublează efectul** (două rambursări). Remediu: `Idempotency-Key` la `create_refund`
+  (Pas 6).
+- Extensia Ruff din VS Code (format on save) a rupt rândurile la 88 de caractere, deși proiectul are `line-length = 120`:
+  fișierul a fost deschis cu `code fișier` într-o fereastră care nu era folderul proiectului, deci extensia nu a văzut
+  `pyproject.toml`. Ruff păstrează apoi rândurile rupte din cauza virgulei finale („magic trailing comma”). Fără efect
+  asupra codului; remediu: deschid folderul proiectului cu `code .`.
+
+#### Cum o spun la interviu
+- „Fiecare apel extern are timeout explicit. Fac retry doar pe erori tranzitorii, cu backoff exponențial și jitter. Un
+  404 e un răspuns de business, nu un eșec: nu-l reîncerc și nu deschide breaker-ul. Un 401 e greșeala mea, deci nu-l
+  reîncerc. Peste toate e un circuit breaker: după 5 eșecuri la rând eșuez imediat timp de 30 de secunde, apoi las un
+  singur apel de probă.”
+- „Retry-ul pe un POST cu efect e periculos; de aceea rambursarea trimite o cheie de idempotență.”
+
+---
