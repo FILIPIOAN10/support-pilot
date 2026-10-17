@@ -7,6 +7,9 @@ reale)** și **cum o spun**.
 
 Regula de onestitate: spun „construit și testat local”, nu „în producție”. Ce nu a rulat încă e marcat explicit.
 
+Pentru învățat: `docs/STUDIU.md` (fișa completă), `docs/STUDIU-SIMPLU.md` (15 minute), `docs/INTERVIU.md` (script de
+interviu, RO + EN), `docs/flashcards.html` (35 de cartonașe; se deschide în browser). Le actualizez pe măsură ce avansez.
+
 ---
 
 ## Faza A — Fundația

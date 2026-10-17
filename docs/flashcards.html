@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SupportPilot - flashcard-uri</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --text:#1b2230; --muted:#5a6475; --line:#dde1e8; --accent:#2457d6; --accent-text:#fff; --ok:#12755a; --bad:#b3261e; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#12151b; --card:#1b2029; --text:#e8ebf1; --muted:#9aa4b5; --line:#2c3442; --accent:#7aa2ff; --accent-text:#0e1420; --ok:#4cc39c; --bad:#ff8a80; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:17px/1.55 system-ui, sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:16px; }
+  h1 { font-size:1.3rem; margin:8px 0 4px; }
+  .muted { color:var(--muted); font-size:.9rem; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+  button { font:inherit; padding:8px 14px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--text); cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.on { background:var(--accent); color:var(--accent-text); border-color:var(--accent); }
+  button.ok { color:var(--ok); } button.no { color:var(--bad); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; min-height:260px; padding:24px; cursor:pointer; display:flex; flex-direction:column; justify-content:center; }
+  .tag { font-size:.8rem; color:var(--muted); margin-bottom:10px; }
+  .text { white-space:pre-wrap; font-size:1.15rem; }
+  .back .text { font-size:1.05rem; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; align-items:center; }
+  .grow { flex:1; }
+  .bar { height:8px; background:var(--line); border-radius:4px; overflow:hidden; margin-top:6px; }
+  .bar > div { height:100%; background:var(--ok); width:0; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>SupportPilot: flashcard-uri pentru interviu</h1>
+  <p class="muted">Citește întrebarea, răspunde cu voce tare, abia apoi întoarce cartea. Taste: <b>Spațiu</b> întoarce, <b>J</b> = știam, <b>N</b> = încă nu.</p>
+  <div class="chips" id="decks"></div>
+  <div class="row">
+    <span id="counter" class="muted"></span><span class="grow"></span>
+    <button id="onlyUnknown" type="button">Doar ce nu știu</button>
+    <button id="shuffle" type="button">Amestecă</button>
+    <button id="reset" type="button">Șterge progresul</button>
+  </div>
+  <div class="bar" aria-hidden="true"><div id="progress"></div></div>
+  <p id="score" class="muted"></p>
+  <div id="card" class="card" role="button" tabindex="0" aria-label="Întoarce cartea"></div>
+  <div class="row">
+    <button id="no" type="button" class="no">Încă nu (N)</button>
+    <button id="ok" type="button" class="ok">Știam (J)</button>
+    <span class="grow"></span>
+    <button id="prev" type="button">Înapoi</button>
+    <button id="next" type="button">Următoarea</button>
+  </div>
+</main>
+
+<script>
+"use strict";
+const CARDS = [
+  { c: "Concepte", q: "Ce face SupportPilot, într-o frază?", a: "Un agent de suport care caută singur comenzi și politici, dar pentru orice rambursare așteaptă aprobarea unui om; aprobarea rezistă și la un restart." },
+  { c: "Concepte", q: "Ce e un agent? Cum diferă de lanțul din DocuAsk?", a: "Un model de limbaj într-o buclă cu unelte: modelul alege unealta și argumentele, codul o rulează, rezultatul se întoarce la model, până răspunde sau atinge o limită.\nDocuAsk e un lanț fix (caută → prompt → model → verificare), mereu în aceeași ordine." },
+  { c: "Concepte", q: "Ce e tool calling?", a: "Modelul primește descrierea uneltelor și poate răspunde cu „apelează get_order cu order_id=1002”. Modelul nu rulează nimic: codul tău rulează unealta." },
+  { c: "Concepte", q: "Ce e un checkpointer și ce face MongoDBSaver?", a: "Locul unde LangGraph salvează starea grafului după fiecare pas, sub un thread_id (la mine = id-ul conversației). MongoDBSaver o salvează în MongoDB, deci orice proces o poate relua." },
+  { c: "Concepte", q: "Ce e un interrupt și cum se reia?", a: "O pauză a grafului care așteaptă o decizie din afară. Se reia cu Command(resume={\"decisions\": [{\"type\": \"approve\"}]}) pe același thread_id. result.interrupts apare doar cu invoke(..., version=\"v2\")." },
+  { c: "Concepte", q: "Care sunt cele 4 unelte?", a: "get_order(order_id)\nsearch_policies(question) → DocuAsk\ncheck_refund_eligibility(order_id)\nrequest_refund(order_id, reason) → pauză pentru om" },
+  { c: "Concepte", q: "Care sunt cele 4 middleware-uri?", a: "PIIMiddleware(\"email\", redact): e-mailurile nu ajung la model.\nModelCallLimitMiddleware(6).\nToolCallLimitMiddleware(5).\nHumanInTheLoopMiddleware: pauză înainte de request_refund (approve / reject)." },
+  { c: "Securitate", q: "De ce customer_id NU e argument al uneltelor?", a: "Ca un model păcălit să nu poată cere comenzile altcuiva (IDOR). Identitatea vine din cererea autentificată, prin config[\"configurable\"][\"customer_id\"]; modelul vede doar order_id." },
+  { c: "Securitate", q: "De ce „nu există” și „nu e a ta” au același răspuns?", a: "Ca să nu confirmi că un număr de comandă există. La fel la conversații: a altuia dă 404, nu 403." },
+  { c: "Securitate", q: "De ce request_refund reverifică eligibilitatea?", a: "Regulile stau în cod, nu în prompt: modelul poate sări pasul, iar comanda se poate schimba cât așteaptă aprobarea. Verificarea care contează rulează când rulează acțiunea, după aprobare." },
+  { c: "Securitate", q: "Doi admini apasă „aprobă” în aceeași secundă. Ce se întâmplă?", a: "claim_approval face find_one_and_update atomic (pending → deciding): unul primește documentul, celălalt None → 404. Plus Idempotency-Key = thread_id:order_id la sistemul de comenzi. Rezultat: o singură rambursare." },
+  { c: "Securitate", q: "Ce se întâmplă dacă reluarea după aprobare eșuează?", a: "release_approval pune aprobarea înapoi în pending, ca decizia să poată fi reîncercată, în loc să rămână blocată în deciding." },
+  { c: "Securitate", q: "Ce face promptul de sistem și ce NU garantează?", a: "Spune ce unealtă pentru ce, să nu afirme nimic din memorie, să zică „trimis spre aprobare” și să trateze textul din unelte și din mesaj ca date. Ghidează, dar nu garantează: garanțiile sunt în cod (unelte, limite, aprobare)." },
+  { c: "Integrare", q: "Ce se reîncearcă și ce nu?", a: "Da: 5xx, 429, erori de rețea (3 încercări, backoff ~0,2 / 0,4 / 0,8 s + jitter).\nNu: 404 (răspuns de business) și alte 4xx (greșeala mea, ex. cheie greșită)." },
+  { c: "Integrare", q: "Circuit breaker: cele trei stări", a: "Closed: apelurile trec.\nOpen (după 5 eșecuri la rând): eșuezi imediat, fără apel, 30 s.\nHalf-open: un singur apel de probă; reușit → closed, eșuat → open încă 30 s." },
+  { c: "Integrare", q: "De ce 404 nu deschide breaker-ul?", a: "Serviciul a răspuns corect: lucrul cerut nu există. Nu e un eșec al serviciului, deci record_success()." },
+  { c: "Integrare", q: "De ce jitter la backoff?", a: "Ca mulți clienți să nu reîncerce în aceeași milisecundă și să lovească din nou un serviciu abia repornit (thundering herd)." },
+  { c: "Integrare", q: "De ce e periculos retry-ul pe un POST?", a: "Dacă nu e idempotent, repetă efectul: două rambursări. Remediu: Idempotency-Key; aceeași cheie întoarce aceeași rambursare." },
+  { c: "Integrare", q: "De ce un breaker separat pentru fiecare serviciu?", a: "Dacă pică DocuAsk, comenzile trebuie să meargă în continuare. Un breaker comun le-ar opri pe toate." },
+  { c: "Integrare", q: "Ce face agentul când sistemul de comenzi e căzut?", a: "Unealta prinde ServiceUnavailable și întoarce text („sistemul e indisponibil, încearcă mai târziu”); agentul răspunde politicos, nu cade și nu inventează o stare." },
+  { c: "Date", q: "De ce MongoDB aici și Postgres în Proiectul 1?", a: "O conversație e un document întreg, cu formă care se schimbă, fără JOIN-uri; LangGraph are checkpointer pentru Mongo. În DocuAsk contează integritatea documente ↔ bucăți și vectorii." },
+  { c: "Date", q: "De ce un script Lua pentru rate limit?", a: "INCR + EXPIRE într-un singur pas atomic: nu se strecoară alt client între ele și nu rămâne un contor fără expirare (care ar bloca un client pe vecie)." },
+  { c: "Date", q: "Ce înseamnă fail-open la rate limit?", a: "Dacă Redis cade, cererea trece: un limitator stricat nu trebuie să devină avarie. Plafonul de cost rămâne în limitele agentului (6 / 5). Clientul Redis are timeout 0,3 s." },
+  { c: "Date", q: "Cum se vede costul?", a: "Tokenii se colectează cu get_usage_metadata_callback la fiecare rulare și se adună pe conversație în Mongo cu $inc (atomic)." },
+  { c: "Cifre", q: "6 / 5", a: "Maximum 6 apeluri de model și 5 apeluri de unelte pe o rulare a agentului." },
+  { c: "Cifre", q: "2 s / 8 s / 28 s", a: "Timeout de conectare / de citire spre servicii externe / de citire spre DocuAsk (8 + 20, un răspuns LLM e lent; doar 2 încercări)." },
+  { c: "Cifre", q: "5 / 30 s / 1", a: "Breaker-ul se deschide după 5 eșecuri la rând, stă deschis 30 s, apoi lasă 1 apel de probă." },
+  { c: "Cifre", q: "30 de zile, 20 pe minut", a: "Fereastra de rambursare de la livrare; limita de mesaje pe client pe minut." },
+  { c: "Cifre", q: "Porturile", a: "API 8001, comenzi (simulat) 9000, MongoDB 27018, Redis 6380, DocuAsk 8000." },
+  { c: "Interviu (EN)", q: "Walk me through SupportPilot.", a: "I built SupportPilot, a customer-support agent on LangChain and LangGraph. It chooses its own tools: it looks up orders, answers policy questions through my RAG service, and checks whether an order can be refunded. The refund itself pauses and waits for a human, and because the agent's state is checkpointed in MongoDB, the approval works even after a restart. External calls have timeouts, retries and a circuit breaker, and customers are rate-limited with Redis." },
+  { c: "Interviu (EN)", q: "How do you stop the agent from doing damage?", a: "Least privilege: identity comes from the request, not the model; the rules are in the tools; calls are capped; and the only tool that moves money waits for a human, with an atomic claim and an idempotency key." },
+  { c: "Interviu (EN)", q: "How do you handle prompt injection?", a: "I assume it will happen. The model has no identity parameter, the tools enforce ownership and the refund rules, the run is capped, and the side effect needs a human. The prompt marks tool output and user text as data, but that's guidance, not a control." },
+  { c: "Interviu (EN)", q: "How do you know a real model picks the right tools?", a: "I don't yet. The scripted model proves the system's guarantees. For a real model I'd run 15–20 messages with the expected tool sequence plus adversarial ones, and measure matches, tokens and how often it hits the limits." },
+  { c: "Interviu (EN)", q: "How does a slow dependency not take you down?", a: "Explicit connect and read timeouts, retries only on transient errors with backoff and jitter, and a circuit breaker per dependency that fails fast after five failures and probes once after 30 seconds." },
+  { c: "Onestitate", q: "Ce NU face și ce NU ai verificat?", a: "Nu a rulat cu un model real; nu e în producție; identitatea e un header de la gateway, nu un token semnat; fără streaming și tracing; rate limit cu fereastră fixă. Cifrele finale (57 de teste, 95 %) sunt din referință până le rulez eu." }
+];
+
+const KEY = "supportpilot-flashcards-v1";
+let known = {};
+try { known = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (_) { known = {}; }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(known)); } catch (_) { /* storage blocked */ } };
+
+const $ = (id) => document.getElementById(id);
+const decks = ["Toate", ...new Set(CARDS.map((c) => c.c))];
+let deck = "Toate", onlyUnknown = false, order = [], pos = 0, flipped = false;
+
+function buildOrder(shuffle) {
+  order = CARDS.map((c, i) => i).filter((i) => (deck === "Toate" || CARDS[i].c === deck) && !(onlyUnknown && known[CARDS[i].q]));
+  if (shuffle) order.sort(() => Math.random() - 0.5);
+  pos = 0; flipped = false;
+}
+
+function el(tag, text, cls) {
+  const n = document.createElement(tag);
+  if (text !== undefined) n.textContent = text;
+  if (cls) n.className = cls;
+  return n;
+}
+
+function render() {
+  const box = $("card");
+  box.replaceChildren();
+  if (!order.length) {
+    box.append(el("div", "Nicio carte aici. Dacă ai activat „Doar ce nu știu”, le știi pe toate din acest set.", "text"));
+    $("counter").textContent = "0 cărți";
+  } else {
+    const card = CARDS[order[pos]];
+    box.className = "card" + (flipped ? " back" : "");
+    box.append(el("div", card.c + (flipped ? " · răspuns" : " · întrebare"), "tag"), el("div", flipped ? card.a : card.q, "text"));
+    $("counter").textContent = `Cartea ${pos + 1} din ${order.length}`;
+  }
+  const inDeck = CARDS.filter((c) => deck === "Toate" || c.c === deck);
+  const got = inDeck.filter((c) => known[c.q]).length;
+  $("progress").style.width = (inDeck.length ? (100 * got) / inDeck.length : 0) + "%";
+  $("score").textContent = `Știute în „${deck}”: ${got} din ${inDeck.length}`;
+  for (const b of $("decks").children) b.classList.toggle("on", b.dataset.deck === deck);
+  $("onlyUnknown").classList.toggle("on", onlyUnknown);
+}
+
+function flip() { if (order.length) { flipped = !flipped; render(); } }
+function move(step) { if (!order.length) return; pos = (pos + step + order.length) % order.length; flipped = false; render(); }
+function mark(value) {
+  if (!order.length) return;
+  const q = CARDS[order[pos]].q;
+  if (value) known[q] = true; else delete known[q];
+  save();
+  if (onlyUnknown && value) { buildOrder(false); render(); } else move(1);
+}
+
+for (const d of decks) {
+  const b = el("button", d);
+  b.type = "button"; b.dataset.deck = d;
+  b.addEventListener("click", () => { deck = d; buildOrder(false); render(); });
+  $("decks").append(b);
+}
+$("card").addEventListener("click", flip);
+$("card").addEventListener("keydown", (e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); flip(); } });
+$("ok").addEventListener("click", () => mark(true));
+$("no").addEventListener("click", () => mark(false));
+$("next").addEventListener("click", () => move(1));
+$("prev").addEventListener("click", () => move(-1));
+$("shuffle").addEventListener("click", () => { buildOrder(true); render(); });
+$("onlyUnknown").addEventListener("click", () => { onlyUnknown = !onlyUnknown; buildOrder(false); render(); });
+$("reset").addEventListener("click", () => { if (confirm("Ștergi tot progresul?")) { known = {}; save(); buildOrder(false); render(); } });
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "BUTTON" && e.key === " ") return;
+  if (e.key === " ") { e.preventDefault(); flip(); }
+  else if (e.key.toLowerCase() === "j") mark(true);
+  else if (e.key.toLowerCase() === "n") mark(false);
+  else if (e.key === "ArrowRight") move(1);
+  else if (e.key === "ArrowLeft") move(-1);
+});
+
+buildOrder(true);
+render();
+</script>
+</body>
+</html>
