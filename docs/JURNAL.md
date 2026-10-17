@@ -415,3 +415,46 @@ what the model sees: {'get_order': ['order_id'], 'search_policies': ['question']
 - [x] commit pe fiecare pas (8, 9)
 
 ---
+
+## Faza D — Agentul
+
+### Pas 10 — `fake.py`: un model scriptat, determinist · 2026-10-17
+
+#### Ce am făcut
+- `ScriptedSupportModel(BaseChatModel)`: un model de chat fals, din câteva expresii regulate, care răspunde ca un model
+  real cu apelare de unelte (`AIMessage(content="", tool_calls=[...])`).
+- Două situații: ultimul mesaj e **de la client** (alege unealta după număr de comandă + cuvinte cheie) sau e un
+  **rezultat de unealtă** (scrie răspunsul din el, ori cere `request_refund` după „eligible: true”).
+- Tokeni estimați (~1 token / 4 caractere) în `usage_metadata`, ca numărarea costului să poată fi testată.
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Model fals implicit | Determinist, gratuit, fără cheie și fără rețea: teste și CI stabile |
+| Respectă `BaseChatModel` (`_generate`, `bind_tools`) | `create_agent` îl folosește exact ca pe `ChatOpenAI` |
+| „refund” verificat înaintea lui „status” | „When will my refund for 1001 arrive?” duce la rambursare, nu la starea comenzii |
+| `usage_metadata` plauzibil | Costul pe conversație se poate testa fără model real |
+
+#### Ce am verificat (rezultate reale)
+```text
+'Where is my order 1002?'            -> tool_calls=[('get_order', {'order_id': '1002'})] content=''
+'I want a refund for order 1001'     -> tool_calls=[('check_refund_eligibility', {'order_id': '1001'})] content=''
+'How do returns work?'               -> tool_calls=[('search_policies', {'question': 'How do returns work?'})] content=''
+'Hi there'                           -> tool_calls=[] content='Hello! I can check an order, explain our policies, or start a refund request.'
+after eligible=true  -> [('request_refund', {'order_id': '1001', 'reason': 'I want a refund for order 1001'})]
+usage: {'input_tokens': 28, 'output_tokens': 1, 'total_tokens': 29}
+```
+- Un model care cere o unealtă are `content=''` și `tool_calls`; un răspuns final are text și nicio unealtă.
+- A doua tură: după „eligible: true”, cere `request_refund` (pasul unde agentul va face pauză pentru om).
+- Fișierul are același sens ca referința (AST identic), `ruff` curat; 17 teste în continuare verzi.
+
+#### Capcane
+- Modelul fals dovedește că **sistemul** e corect (bucla, unelte, limite, pauză), **nu** că un model real alege bine
+  unealta. Aceea se măsoară separat (Pas 30).
+
+#### Cum o spun la interviu
+- „Am un model fals, scriptat, care respectă interfața de chat model din LangChain și întoarce `tool_calls` ca unul
+  real. Îmi dă determinism: același mesaj produce mereu aceeași secvență de unelte. Dovedește garanțiile sistemului,
+  nu calitatea alegerilor unui model real.”
+
+---
