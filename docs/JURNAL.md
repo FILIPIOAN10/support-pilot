@@ -1146,4 +1146,42 @@ supportpilot-redis-1    Up 11 minutes (healthy)       0.0.0.0:6380->6379/tcp
   folosește aceeași imagine pe alt port, era raportat unhealthy din cauza healthcheck-ului din imagine; i-am dat unul
   propriu.”
 
+### Pas 26 — Scenariul complet, în containere · 2026-10-18
+
+#### Ce am făcut
+Stiva compose (api, mongo, redis, orders) + DocuAsk pe calculator (baza `docuask_shop`), apoi scenariul rambursării de
+la cap la coadă, cu `curl.exe` din PowerShell (`$r = ... | ConvertFrom-Json` ca să refolosesc `conversation_id`).
+
+#### Ce am verificat (rezultate reale)
+```text
+politică (container → DocuAsk prin host.docker.internal)
+  "Standard delivery takes 3 to 5 working days within the EU. ... [1]
+   Sources: shipping.md (Shipping Policy > Delivery times)"
+clientul cere rambursarea
+  status = awaiting_approval, reply = "I have sent your refund request to a colleague for approval..."
+adminul vede cererea
+  [{"customer_id":"c-100", "actions":[{"name":"request_refund","args":{"order_id":"1001","reason":"I want a refund for order 1001, shoes too small"}}]}]
+adminul (maria) aprobă
+  {"status":"open","reply":"Done. Refund RF-0001 is registered and pending."}
+clientul vede conversația
+  [customer: "I want a refund for order 1001, shoes too small", assistant: "Done. Refund RF-0001 is registered and pending."]
+```
+Logurile API-ului, toate sub același request id al aprobării (`73c9288e32e6`):
+```text
+httpx [73c9288e32e6] GET  http://orders:9000/orders/1001          "200 OK"        ← request_refund reverifică
+httpx [73c9288e32e6] POST http://orders:9000/orders/1001/refunds  "201 Created"   ← abia acum se creează
+supportpilot.service [73c9288e32e6] approval conversation=8f19... decision=approve by=maria
+supportpilot [73c9288e32e6] POST /v1/admin/approvals/8f19... -> 200 in 76 ms
+```
+- Rambursarea (`POST .../refunds`) apare **numai** în cererea de aprobare, nu în cea a clientului.
+- În aceeași cerere, **înainte** de creare, unealta a citit din nou comanda (`GET /orders/1001`): reverificarea
+  proprietarului și a ferestrei de 30 de zile, după aprobare.
+- Conversația clientului nu conține apelurile de unelte; auditul are `by=maria`.
+
+#### Cum o spun la interviu (demonstrația de 2 minute)
+- „Clientul cere o rambursare; agentul verifică eligibilitatea și cere unealta, dar middleware-ul îl oprește înainte.
+  Starea se salvează în MongoDB, clientul primește un mesaj fix. Un coleg vede exact ce ar executa agentul — comanda
+  1001 și motivul — și aprobă. Agentul reia aceeași rulare; în loguri, sub același request id, unealta citește din nou
+  comanda și abia apoi creează rambursarea cu o cheie de idempotență.”
+
 ---

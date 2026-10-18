@@ -3,7 +3,7 @@
 Citește-o de sus în jos, o dată, apoi folosește secțiunea 8 (auto-test). Dovezile, pas cu pas: `docs/JURNAL.md`.
 Varianta de 15 minute: `docs/STUDIU-SIMPLU.md`. Scriptul de interviu: `docs/INTERVIU.md`. Cartonașe: `docs/flashcards.html`.
 
-> **Unde sunt acum (2026-10-18): pașii 1–25 din 32 făcuți** (fazele A–G + imaginea Docker și compose-ul; 57 de teste, 95 % acoperire). Fișa descrie
+> **Unde sunt acum (2026-10-18): pașii 1–26 din 32 făcuți** (fazele A–G + Docker: scenariul rambursării rulează în containere; 57 de teste, 95 % acoperire). Fișa descrie
 > aplicația **întreagă**, ca să înveți de la început ce construiești. Cifrele marcate *(referință)* vin din rularea de
 > verificare a ghidului, nu din build-ul meu; le înlocuiesc cu ale mele când ajung la pasul respectiv.
 
@@ -110,8 +110,10 @@ client (prin gateway)  ──►  POST /v1/chat   X-API-Key + X-Customer-Id
 | 13 | `request_refund` rulează abia acum și **reverifică** proprietarul și eligibilitatea, apoi cere rambursarea cu `Idempotency-Key = thread_id:order_id` | `tools.py`, `clients.py` |
 | 14 | Aprobarea primește `done`, cine a decis și când (audit). Dacă reluarea a eșuat, aprobarea revine în `pending` | `store.py` → `finish_approval()` / `release_approval()` |
 
-*(referință)* Rezultatul real al scenariului: `awaiting_approval` → adminul aprobă → `"Done. Refund RF-0002 is
-registered and pending."`. După `docker compose restart api`, o respingere a mers pe aceeași conversație.
+Rezultatul meu, în containere (Pas 26): `awaiting_approval` → adminul `maria` aprobă → `"Done. Refund RF-0001 is
+registered and pending."`. În loguri, sub request id-ul aprobării: `GET /orders/1001` (reverificarea), apoi
+`POST /orders/1001/refunds 201`. *(referință, de confirmat la Pas 28)* După `docker compose restart api`, o respingere a
+mers pe aceeași conversație.
 
 ### 4.3 Cele patru unelte
 
