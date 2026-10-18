@@ -1220,4 +1220,42 @@ call 7 : 0.08 s
   deschis și răspunsurile au venit în 80 ms, fără să mai lovească serviciul. După reparare a mai stat deschis 30 de
   secunde, apoi un apel de probă l-a închis.”
 
+### Pas 28 — Aprobare după repornirea aplicației · 2026-10-18
+
+#### Ce am făcut
+Clientul a cerut o rambursare → `docker compose restart api` (procesul vechi a murit cu tot ce avea în memorie) →
+colegul `ion` a **respins** cererea după restart, cu o notă.
+
+#### Ce am verificat (rezultate reale)
+```text
+cererea         status = awaiting_approval   (conversația d83b6efe...)
+restart         docker compose restart api → Up 20 seconds (healthy)
+după restart    GET /v1/admin/approvals → cererea e acolo: request_refund, order_id 1001, motivul
+ion respinge    {"status":"open","reply":"About your refund: User rejected the tool call for `request_refund` with reason: Item was worn"}
+clientul vede   [customer: "I want a refund for order 1001, shoes too small", assistant: "About your refund: ... Item was worn"]
+auditul (mongosh, colecția approvals):
+  { status: 'done', decided_by: 'maria', decision: 'approve', note: null }
+  { status: 'done', decided_by: 'ion',   decision: 'reject',  note: 'Item was worn' }
+```
+- **Procesul nou** a încărcat din MongoDB rularea oprită a agentului și a dus-o la capăt cu decizia primită: starea nu
+  stă în memorie, stă în checkpointer-ul LangGraph (`MongoDBSaver`).
+- Rambursarea respinsă nu s-a creat; clientul a aflat motivul; auditul are cine, ce și de ce, pentru ambele decizii.
+
+#### Capcane
+- Textul „User rejected the tool call…” vine din `HumanInTheLoopMiddleware`; modelul fals îl repetă, un model real l-ar
+  reformula pentru client.
+- Datele rămân în volumul `mongodata`; `docker compose down -v` le-ar șterge.
+
+#### Cum o spun la interviu
+- „Clientul cere o rambursare, eu repornesc containerul API, iar un coleg respinge cererea după restart. Procesul nou
+  încarcă rularea oprită din MongoDB și o termină cu decizia lui; clientul primește motivul, iar auditul arată cine a
+  decis și de ce.”
+
+### ✅ Checkpoint H — Docker și sistemul întreg
+- [x] scenariul rambursării, de la cerere la aprobare, pe containerele mele (Pas 26)
+- [x] agentul răspunde politicos cu sistemul de comenzi căzut, breaker-ul se deschide și se închide (Pas 27)
+- [x] decizie **după** `docker compose restart api` (Pas 28)
+- [x] `docker compose exec api id` → `uid=10001` (Pas 25)
+- [x] commit pe fiecare pas (25–28)
+
 ---

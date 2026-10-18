@@ -3,7 +3,7 @@
 Citește-o de sus în jos, o dată, apoi folosește secțiunea 8 (auto-test). Dovezile, pas cu pas: `docs/JURNAL.md`.
 Varianta de 15 minute: `docs/STUDIU-SIMPLU.md`. Scriptul de interviu: `docs/INTERVIU.md`. Cartonașe: `docs/flashcards.html`.
 
-> **Unde sunt acum (2026-10-18): pașii 1–27 din 32 făcuți** (fazele A–G + Docker: rambursarea și căderea unui serviciu, în containere; 57 de teste, 95 % acoperire). Fișa descrie
+> **Unde sunt acum (2026-10-18): pașii 1–28 din 32 făcuți** (fazele A–H: aplicația, 57 de teste, 95 % acoperire, Docker, scenariile în containere inclusiv restart). Fișa descrie
 > aplicația **întreagă**, ca să înveți de la început ce construiești. Cifrele marcate *(referință)* vin din rularea de
 > verificare a ghidului, nu din build-ul meu; le înlocuiesc cu ale mele când ajung la pasul respectiv.
 
@@ -112,8 +112,9 @@ client (prin gateway)  ──►  POST /v1/chat   X-API-Key + X-Customer-Id
 
 Rezultatul meu, în containere (Pas 26): `awaiting_approval` → adminul `maria` aprobă → `"Done. Refund RF-0001 is
 registered and pending."`. În loguri, sub request id-ul aprobării: `GET /orders/1001` (reverificarea), apoi
-`POST /orders/1001/refunds 201`. *(referință, de confirmat la Pas 28)* După `docker compose restart api`, o respingere a
-mers pe aceeași conversație.
+`POST /orders/1001/refunds 201`. După `docker compose restart api` (Pas 28), colegul `ion` a respins o altă cerere pe
+aceeași conversație: procesul nou a reluat rularea din MongoDB, iar auditul are ambele decizii (`maria`/approve,
+`ion`/reject cu nota „Item was worn”).
 
 ### 4.3 Cele patru unelte
 
