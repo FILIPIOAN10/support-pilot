@@ -1091,3 +1091,59 @@ Fișierele cu risc (unelte, revendicarea atomică, serviciul, rate limit, rezili
 - [x] commit pe fiecare pas (21–24)
 
 ---
+
+## Faza H — Docker și sistemul întreg
+
+### Pas 25 — `Dockerfile` și `docker-compose.yml` · 2026-10-18
+
+#### Ce am făcut
+- `Dockerfile` multi-stage: etapa `build` cu `uv` (dependențe înaintea codului, `--frozen --no-dev`), etapa finală
+  `python:3.12-slim` cu doar `/app` (`.venv` + cod), utilizator `10001`, `HEALTHCHECK` pe `/health/live`, `CMD` în exec
+  form.
+- `docker-compose.yml`: `mongo` (volum `mongodata`), `redis`, `orders` (aceeași imagine, altă comandă), `api`; API-ul
+  pornește după ce celelalte sunt healthy; DocuAsk prin `host.docker.internal:8000`.
+- Înainte: oprite serverele de dezvoltare și `docker stop sp-mongo sp-redis` (aceleași porturi).
+
+#### Ce am schimbat față de ghid (greșeală găsită)
+`docker compose ps` arăta `orders  running unhealthy`, deși simulatorul răspundea. Log-ul de healthcheck:
+`URLError: [Errno 111] Connection refused`. Cauza: `HEALTHCHECK`-ul din imagine întreabă portul **8000**, iar `orders`
+folosește aceeași imagine, dar ascultă pe **9000**. Remediu: `orders` are în compose propriul `healthcheck` pe 9000, iar
+`api` așteaptă `orders: condition: service_healthy` (în loc de `service_started`). Verificat pe copia de probă și pe
+stiva mea: toate 4 `healthy`.
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Multi-stage | `uv` și uneltele de build nu ajung în imaginea finală (verificat: nu există `uv` în runtime) |
+| Dependențe înaintea codului | Cache de straturi: o modificare de cod nu reinstalează pachetele |
+| Non-root (uid 10001) | Un proces compromis nu poate scrie în imagine și nu poate deschide porturi privilegiate |
+| Exec form | uvicorn e PID 1, primește `SIGTERM`, se oprește frumos |
+| Nume de servicii ca adrese, `environment` peste `.env` | În container `localhost` e containerul; `.env`-ul meu (cu `127.0.0.1`) e suprascris |
+| `depends_on: service_healthy` | API-ul nu pornește înaintea bazelor (ar cădea pe fail fast) |
+| Healthcheck propriu pe serviciul care schimbă portul | Altfel un orchestrator ar reporni la nesfârșit un serviciu sănătos |
+
+#### Ce am verificat (rezultate reale)
+```text
+docker compose ps
+supportpilot-api-1      Up 55 seconds (healthy)       0.0.0.0:8001->8000/tcp
+supportpilot-mongo-1    Up 11 minutes (healthy)       0.0.0.0:27018->27017/tcp
+supportpilot-orders-1   Up About a minute (healthy)   0.0.0.0:9000->9000/tcp
+supportpilot-redis-1    Up 11 minutes (healthy)       0.0.0.0:6380->6379/tcp
+```
+- `curl.exe localhost:8001/health/ready` → `{"status":"ready","redis":"up"}`
+- chat „Where is my order 1002?” → `"Order 1002 is shipped (carrier: FastCourier, estimated delivery: 2026-10-20)."`
+- `docker compose exec api id` → `uid=10001(app) gid=999(app) groups=999(app)`
+- `docker image ls supportpilot-api` → **356 MB**; prima construcție ~2,5 minute.
+- `Dockerfile` identic cu referința; `docker-compose.yml` = referința + corectura; `docker compose config -q` OK.
+
+#### Capcane
+- Porturi ocupate dacă rămân pornite `sp-mongo` / `sp-redis` sau serverele din terminale.
+- `docker compose down -v` șterge și volumul `mongodata` (toate conversațiile).
+
+#### Cum o spun la interviu
+- „Imaginea e multi-stage, non-root, cu healthcheck și exec form; dependențele se copiază înaintea codului pentru cache.
+  În compose, API-ul pornește doar după ce Mongo, Redis și simulatorul sunt healthy. Am găsit că simulatorul, care
+  folosește aceeași imagine pe alt port, era raportat unhealthy din cauza healthcheck-ului din imagine; i-am dat unul
+  propriu.”
+
+---
