@@ -1259,3 +1259,40 @@ auditul (mongosh, colecția approvals):
 - [x] commit pe fiecare pas (25–28)
 
 ---
+
+## Faza I — CI
+
+### Pas 29 — `.github/workflows/ci.yml` · 2026-10-18
+
+#### Ce am făcut
+- Workflow GitHub Actions: la push pe `main` și la PR. Job `test`: containere de serviciu MongoDB și Redis (cu
+  healthcheck), `uv sync --frozen`, `ruff check` + `ruff format --check`, `pytest` cu `--cov-fail-under=80`. Job `image`
+  (`needs: test`): construiește imaginea Docker cu Buildx, `push: false`, cache `type=gha`.
+- Aceleași versiuni de acțiuni ca CI-ul DocuAsk (deja verde).
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| `permissions: contents: read` | Drepturi minime pentru token-ul workflow-ului |
+| `concurrency` + `cancel-in-progress` | Push-urile rapide nu consumă minute pe commit-uri depășite |
+| `TEST_MONGO_URL` / `TEST_REDIS_URL` | Aceleași teste: local cu Testcontainers, în CI cu containerele GitHub |
+| Poartă de acoperire 80 % | Build-ul pică dacă testele acoperă mai puțin (eu am 95 %) |
+| `image` după `test`, fără push | Dovedește că `Dockerfile`-ul merge pe o mașină curată, fără să public nimic |
+
+#### Ce am verificat (rezultate reale, prima rulare pe GitHub)
+- Rularea `39113001252` pentru commit-ul „Step 29: CI with GitHub Actions”: **success**, **1m55s** în total.
+  - `test`: success în **47 s** — `All checks passed!`, `36 files already formatted`,
+    `TOTAL 649 34 95%`, **`57 passed in 16.85s`**.
+  - `image`: success în **61 s**.
+- Fișierul e identic cu referința. Ghidul spunea că workflow-ul nu a fost rulat pe GitHub; eu l-am rulat și e verde.
+
+#### Capcane
+- Fișierul trebuie să fie exact în `.github/workflows/`; altfel GitHub îl ignoră fără eroare.
+- Pagina „Get started with GitHub Actions” apare până la primul push cu un workflow: nu se creează nimic de acolo.
+
+#### Cum o spun la interviu
+- „Am CI pe GitHub Actions: la fiecare push rulează lint-ul și cele 57 de teste pe MongoDB și Redis reale, ca service
+  containers, cu o poartă de acoperire de 80 %; după ce trec, un al doilea job construiește imaginea Docker. Prima
+  rulare a fost verde în sub două minute.”
+
+---
