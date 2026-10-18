@@ -1039,4 +1039,55 @@ aplicația. Același lucru verificat; suita completă a scăzut de la **30 s la 
   vorbește formatul OpenAI. Verific exact ce primește furnizorul: promptul de sistem, cele patru scheme de unelte,
   `get_order` doar cu `order_id`, iar rezultatul uneltei se întoarce modelului. Fără cheie, fără cost.”
 
+### Pas 24 — Rulezi tot, cu acoperire · 2026-10-18
+
+#### Ce am făcut
+- `uv run pytest --cov=supportpilot --cov-report=term-missing`, `uv run ruff check .`, `uv run ruff format --check .`
+  pe tot proiectul. Fără cod nou.
+
+#### Ce am verificat (rezultate reale, pe codul meu; rulat de mine, terminalul nu a fost copiat)
+```text
+src\supportpilot\agent.py             8      0   100%
+src\supportpilot\api.py             100     13    87%
+src\supportpilot\clients.py          24      4    83%
+src\supportpilot\config.py           36      1    97%
+src\supportpilot\fake.py             63      2    97%
+src\supportpilot\llm.py              15      2    87%
+src\supportpilot\main.py             45      7    84%
+src\supportpilot\orders_mock.py      46      2    96%
+src\supportpilot\ratelimit.py        16      0   100%
+src\supportpilot\resilience.py       84      1    99%
+src\supportpilot\schemas.py          28      0   100%
+src\supportpilot\service.py          82      1    99%
+src\supportpilot\store.py            38      0   100%
+src\supportpilot\tools.py            64      1    98%
+TOTAL                               649     34    95%
+57 passed in 34.54s
+```
+- `ruff check .` → `All checks passed!`; `ruff format --check .` → `36 files already formatted`.
+- Aceleași cifre ca în ghid: 649 de instrucțiuni, 34 neatinse, 95 %.
+
+#### Ce nu e acoperit și de ce
+| Fișier | Ce lipsește | De ce e în regulă / ce spun |
+|---|---|---|
+| `api.py`, `main.py` | fabricile `get_*` reale, `lifespan` | Testele le înlocuiesc intenționat; pornirea reală am verificat-o la Pașii 19–20 |
+| `clients.py` | `make_docuask_client`, `DocuAskClient.ask` | Testele folosesc `FakeDocuAsk`; apelul real spre DocuAsk l-am verificat la Pasul 20 |
+| `llm.py` | ramura Azure | **Netestată**, nici prin contract. O spun cinstit |
+
+Fișierele cu risc (unelte, revendicarea atomică, serviciul, rate limit, reziliența, agentul) au 98–100 %.
+
+#### Capcane
+- Acoperirea mare nu înseamnă teste bune: o linie atinsă nu e neapărat verificată. Valoarea e în **ce** verifică testele.
+
+#### Cum o spun la interviu
+- „57 de teste, 95 % acoperire, pe baze reale. Ce nu e acoperit e intenționat — fabricile reale și pornirea, verificate
+  rulând sistemul — plus ramura Azure, pe care n-am rulat-o. Testele valoroase sunt cele pe garanții: restart, doi
+  admini simultan, ce primește OpenAI.”
+
+### ✅ Checkpoint G — teste
+- [x] 57 de teste trec, cu MongoDB și Redis reale
+- [x] pot explica de ce un test cu două thread-uri și o barieră dovedește mai mult decât unul secvențial
+- [x] pot spune ce NU dovedesc testele (comportamentul unui model real; ramura Azure)
+- [x] commit pe fiecare pas (21–24)
+
 ---

@@ -5,7 +5,7 @@ Repo: https://github.com/FILIPIOAN10/support-pilot · dovezi pas cu pas: `docs/J
 **Regula de aur:** „L-am construit și testat local și în containere, cu CI. Nu e în producție și nu a rulat cu un model
 real.” Spui exact ce ai verificat și ce nu.
 
-> **Progres (2026-10-18): pașii 1–23 din 32.** Cifrele marcate *(referință)* vin din rularea de verificare a ghidului;
+> **Progres (2026-10-18): pașii 1–24 din 32.** Cifrele marcate *(referință)* vin din rularea de verificare a ghidului;
 > le înlocuiesc cu ale mele când ajung la pasul respectiv. Până atunci **nu le spun ca fiind ale mele**.
 
 ---
@@ -54,7 +54,7 @@ cu Redis.”
 | Timeout-uri | 2 s conectare, 8 s citire (DocuAsk 28 s, 2 încercări) | `config.py`, `clients.py` |
 | Rate limit | 20 de mesaje / minut / client, fail-open, timeout Redis 0,3 s | `config.py`, `api.py` |
 | Redis căzut | fail-open în **0,62 s** cu clientul aplicației; **~9,8 s** cu `redis.Redis(...)` (retry implicit în redis-py 8) | build-ul meu, Pas 15 (măsurat) |
-| Teste la final | 57, acoperire 95 %, MongoDB și Redis reale | *(referință)* |
+| Acoperire | **95 %** (649 de instrucțiuni, 34 neatinse: fabricile reale, pornirea, ramura Azure) | build-ul meu, Pas 24 |
 | Aprobare după restart | reușită după un restart simulat (serviciu, agent și `MongoDBSaver` noi, aceeași bază) | build-ul meu, Pas 16; cu `docker compose restart api`: referință, Faza H |
 | Doi admini simultan | **o singură rambursare** (test cu două thread-uri și o barieră, Mongo real); revendicarea: exact 1 câștigător | build-ul meu, Pașii 14 și 22 |
 

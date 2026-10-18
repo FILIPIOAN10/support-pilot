@@ -3,7 +3,7 @@
 Citește-o de sus în jos, o dată, apoi folosește secțiunea 8 (auto-test). Dovezile, pas cu pas: `docs/JURNAL.md`.
 Varianta de 15 minute: `docs/STUDIU-SIMPLU.md`. Scriptul de interviu: `docs/INTERVIU.md`. Cartonașe: `docs/flashcards.html`.
 
-> **Unde sunt acum (2026-10-18): pașii 1–23 din 32 făcuți** (fazele A–F + toate cele 57 de teste). Fișa descrie
+> **Unde sunt acum (2026-10-18): pașii 1–24 din 32 făcuți** (fazele A–G: aplicația + 57 de teste, 95 % acoperire). Fișa descrie
 > aplicația **întreagă**, ca să înveți de la început ce construiești. Cifrele marcate *(referință)* vin din rularea de
 > verificare a ghidului, nu din build-ul meu; le înlocuiesc cu ale mele când ajung la pasul respectiv.
 
@@ -173,7 +173,7 @@ deci agentul răspunde politicos în loc să cadă.
 | `agent.py` | `create_agent` + cele 4 middleware-uri + promptul de sistem | ✅ Pas 12 |
 | `store.py`, `ratelimit.py`, `service.py` | Mongo, Redis, cazurile de utilizare | ✅ Pașii 14–16 |
 | `schemas.py`, `api.py`, `main.py` | contractul HTTP, autentificarea, rutele, pornirea | ✅ Pașii 17–19 |
-| `tests/` | *(referință)* 57 de teste pe MongoDB și Redis reale, 95 % acoperire | Pașii 9, 13, 21–24 |
+| `tests/` | 57 de teste pe MongoDB și Redis reale, 95 % acoperire | ✅ Pașii 9, 13, 21–24 |
 | `Dockerfile`, `docker-compose.yml`, `ci.yml` | livrare și CI | Pașii 25–29 |
 
 ## 5. Dicționar de termeni
