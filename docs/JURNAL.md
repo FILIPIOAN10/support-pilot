@@ -1376,4 +1376,54 @@ tokens: 11420 in total, 878 per case   time: 20.4 s
 - „În README am pus și ce n-am verificat: aplicația cap-coadă a rulat cu modelul scriptat, modelul real doar în
   evaluare, Azure deloc. Prefer să spun exact ce am măsurat.”
 
+### Pas 32 — Cum o spun la interviu · 2026-10-18
+Materialul de învățat e în `docs/`: `INTERVIU.md` (pitch RO + EN, povestea de 2 minute, cifrele mele cu sursa fiecăreia,
+întrebări probabile, ce nu spun, slăbiciuni, demo de 5 minute), `STUDIU.md`, `STUDIU-SIMPLU.md`, `flashcards.html`
+(35 de cartonașe). Toate cifrele din ele sunt acum din build-ul meu; nu mai e nimic marcat „din referință”.
+
+### ✅ Checkpoint J (final)
+- [x] am rulat cu un model real (evaluarea alegerii uneltelor: 10/10, 3/3) și spun cinstit ce n-a rulat cu el
+- [x] README complet, cu „ce am verificat și ce nu”
+- [x] pot povesti proiectul în 2 minute (`INTERVIU.md`)
+- [x] am lista de slăbiciuni pregătită
+- [x] nicio cheie în git (vezi mai jos)
+
+---
+
+## Încheiere — verificarea finală · 2026-10-18
+
+### Ce am verificat
+- **Secrete:** `.env` (care conține acum cheia mea OpenAI) e ignorat de git și de Docker și nu e urmărit; **0** potriviri
+  cu șiruri de tip cheie (OpenAI `sk-`, GitHub, AWS, chei private) în fișierele urmărite și în **tot istoricul**.
+  `gitleaks` v8.24.3 pe cele 33 de commit-uri: 2 alerte `curl-auth-header`, ambele **fals pozitive** — cheile publice
+  de dezvoltare `dev-key` și `dev-orders-key` din exemple `curl` (README, jurnal). Le-am trecut în `.gitleaksignore`
+  cu motivul; rescanarea: **no leaks found**. (Scanarea folderului de lucru, nu a istoricului, găsește în plus `.env`
+  și biblioteci din `.venv` — ambele în afara git-ului.)
+- **Date personale:** niciun e-mail, nume sau cale locală în fișierele urmărite. E-mailul autorului apare în metadatele
+  commit-urilor, deci e public pe GitHub.
+- **CI:** rularea pentru „Step 31: README with measured results” (`39117740396`): verde, 1m12s.
+- **Stare finală, local:** `57 passed`, `ruff check .` curat, `38 files already formatted`; stiva compose cu 4 servicii
+  healthy.
+
+### Modificări de încheiere
+- `.env.example`: notă că cheile `dev-*` sunt doar pentru dezvoltare locală.
+- `README.md`: în „Known limits”, cheile implicite `dev-gateway-key` / `dev-admin-key` (nimic nu le blochează la pornire).
+- `.gitleaksignore`: cele două alerte fals pozitive, cu motivul.
+
+### Ce am adus în plus față de ghid
+- 3 greșeli găsite și reparate: request id-ul pierdut din logul cererii (Pas 19), clientul Redis „căzut” din teste cu
+  retry implicit (Pas 22, suita 30 s → 18 s), healthcheck-ul simulatorului pe portul greșit (Pas 25).
+- 1 greșeală de cifre în ghid: „17 passed” la Pasul 9 era de fapt pentru toată suita.
+- Descoperiri măsurate: `localhost` pe Windows încearcă întâi IPv6 (~2 s la conexiune nouă; `127.0.0.1` în `.env`);
+  `redis.Redis(...)` are retry implicit (~10 s la Redis căzut față de ~0,6 s cu `from_url`).
+- Pași marcați „NU verificat” în ghid și făcuți: CI pe GitHub (verde), evaluarea cu modelul real (`evals/tool_choice.py`).
+
+### Neverificat la final
+Aplicația cap-coadă cu un model real (doar evaluarea l-a folosit); Azure OpenAI; încărcare și latențe sub trafic;
+scanarea de vulnerabilități a imaginii; o implementare în producție.
+
+### Rămase opționale
+Evaluarea cu mai multe cazuri și mai multe rulări; scenariile din Docker cu `gpt-4o-mini`; token semnat în loc de
+header de gateway; streaming; rate limit cu fereastră glisantă.
+
 ---

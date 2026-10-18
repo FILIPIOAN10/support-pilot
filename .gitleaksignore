@@ -1,0 +1,3 @@
+# Public local-development keys in curl examples (dev-key, dev-orders-key), the same defaults as .env.example: not secrets.
+c1cbfd830c681b4eb9db0e43f908b04da91e528c:README.md:curl-auth-header:31
+bbdbabf57505fff9cd21fcec700c4f9de755d69c:docs/JURNAL.md:curl-auth-header:282

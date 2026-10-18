@@ -129,6 +129,7 @@ the wrong port and was reported unhealthy.
 ## Known limits
 
 - Identity is a trusted-gateway header; production would verify a signed token (JWT / OIDC).
+- The default keys (`dev-gateway-key`, `dev-admin-key`) are public placeholders and nothing rejects them at startup.
 - One gated action per pause: a second refund in the same turn is not handled specially.
 - No streaming of the agent's reply; no distributed tracing (logs carry a request id).
 - Fixed-window rate limit (allows a burst at the window boundary).
