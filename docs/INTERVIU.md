@@ -5,8 +5,8 @@ Repo: https://github.com/FILIPIOAN10/support-pilot · dovezi pas cu pas: `docs/J
 **Regula de aur:** „L-am construit și testat local și în containere, cu CI verde pe GitHub. Nu e în producție. Cu un model
 real am rulat doar evaluarea alegerii uneltelor.” Spui exact ce ai verificat și ce nu.
 
-> **Progres (2026-10-18): toți cei 32 de pași, proiect încheiat.** Cifrele marcate *(referință)* vin din rularea de verificare a ghidului;
-> le înlocuiesc cu ale mele când ajung la pasul respectiv. Până atunci **nu le spun ca fiind ale mele**.
+> **Progres (2026-10-18): toți cei 32 de pași, proiect încheiat.** Toate cifrele de aici sunt din build-ul meu (sursa e pe
+> fiecare rând din secțiunea 3); dovezile sunt în `docs/JURNAL.md`.
 
 ---
 

@@ -4,8 +4,7 @@ Citește-o de sus în jos, o dată, apoi folosește secțiunea 8 (auto-test). Do
 Varianta de 15 minute: `docs/STUDIU-SIMPLU.md`. Scriptul de interviu: `docs/INTERVIU.md`. Cartonașe: `docs/flashcards.html`.
 
 > **Unde sunt acum (2026-10-18): toți cei 32 de pași făcuți, proiect încheiat** (CI verde, 57 de teste, 95 %, evaluarea cu modelul real 10/10 și 3/3). Fișa descrie
-> aplicația **întreagă**, ca să înveți de la început ce construiești. Cifrele marcate *(referință)* vin din rularea de
-> verificare a ghidului, nu din build-ul meu; le înlocuiesc cu ale mele când ajung la pasul respectiv.
+> aplicația **întreagă**. Toate cifrele sunt din build-ul meu; dovezile, pas cu pas, sunt în `docs/JURNAL.md`.
 
 ---
 
