@@ -5,7 +5,7 @@ Repo: https://github.com/FILIPIOAN10/support-pilot · dovezi pas cu pas: `docs/J
 **Regula de aur:** „L-am construit și testat local și în containere, cu CI. Nu e în producție și nu a rulat cu un model
 real.” Spui exact ce ai verificat și ce nu.
 
-> **Progres (2026-10-18): pașii 1–26 din 32.** Cifrele marcate *(referință)* vin din rularea de verificare a ghidului;
+> **Progres (2026-10-18): pașii 1–27 din 32.** Cifrele marcate *(referință)* vin din rularea de verificare a ghidului;
 > le înlocuiesc cu ale mele când ajung la pasul respectiv. Până atunci **nu le spun ca fiind ale mele**.
 
 ---
@@ -50,6 +50,7 @@ cu Redis.”
 | Breaker în fața unui serviciu căzut | cererile 1–2: ~3,7–3,8 s fiecare (3 încercări); cererea 3: **0,00 s**, fără apel | build-ul meu, Pas 6 (`BREAKER_FAILURES=2`, `HTTP_CONNECT_TIMEOUT=0.5`) |
 | Idempotența rambursării | aceeași cheie de două ori → același `RF-0001`; altă cheie → `RF-0002` | build-ul meu, Pas 7 (clienți reali contra simulatorului) |
 | Serviciu care întoarce 503 | 3 încercări, apoi „unavailable” în 0,77 s | build-ul meu, Pas 7 (`/chaos fail`) |
+| Sistemul de comenzi căzut, în containere | cererile 1–5: **~0,9 s** (retry + răspuns politicos); după 5 eșecuri breaker deschis → **0,08 s**; închis la loc după 30 s | build-ul meu, Pas 27 |
 | Limitele agentului | 6 apeluri de model, 5 de unelte pe rulare | `config.py` |
 | Timeout-uri | 2 s conectare, 8 s citire (DocuAsk 28 s, 2 încercări) | `config.py`, `clients.py` |
 | Rate limit | 20 de mesaje / minut / client, fail-open, timeout Redis 0,3 s | `config.py`, `api.py` |

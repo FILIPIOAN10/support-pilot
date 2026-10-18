@@ -1184,4 +1184,40 @@ supportpilot [73c9288e32e6] POST /v1/admin/approvals/8f19... -> 200 in 76 ms
   1001 și motivul — și aprobă. Agentul reia aceeași rulare; în loguri, sub același request id, unealta citește din nou
   comanda și abia apoi creează rambursarea cu o cheie de idempotență.”
 
+### Pas 27 — Ce se întâmplă când un serviciu cade · 2026-10-18
+
+#### Ce am făcut
+- `POST localhost:9000/chaos {"mode":"fail"}` (simulatorul răspunde 503 la tot), apoi 7 întrebări „Where is my order
+  1002?” cu timpul măsurat (`Measure-Command`), apoi `{"mode":"ok"}` și din nou întrebări.
+
+#### Ce am verificat (rezultate reale)
+```text
+call 1 : 1.23 s  "reply":"The system is unavailable right now. Tell the customer to try again in a few minutes."
+call 2 : 0.89 s  (același răspuns)
+call 3 : 0.84 s
+call 4 : 0.86 s
+call 5 : 0.97 s
+call 6 : 0.08 s  ← breaker-ul s-a deschis: răspuns imediat
+call 7 : 0.08 s
+```
+- Apelurile 1–5: ~0,9 s = 3 încercări cu backoff, apoi unealta întoarce „indisponibil”, agentul răspunde politicos.
+  Nicio eroare 500, nicio stare inventată.
+- După **5 eșecuri la rând** breaker-ul se deschide: apelurile 6–7 vin în **0,08 s** (de ~11 ori mai repede), fără să
+  mai lovească serviciul căzut.
+- Imediat după `mode: ok`, răspunsul e tot „unavailable”: breaker-ul stă deschis 30 s. După ce au trecut cele 30 s,
+  o nouă întrebare (trimisă de mine pe stiva mea) → `"Order 1002 is shipped ..."` în 0,10 s: half-open, un apel de
+  probă reușit, breaker închis.
+- Logurile API au exact **5** rânduri `WARNING supportpilot.resilience [...] orders failed after retries: Transient`,
+  câte unul pe fiecare dintre primele 5 apeluri, fiecare cu request id-ul lui; apelurile 6–7 nu au niciunul.
+
+#### Capcane
+- Modelul fals repetă textul uneltei ca atare („Tell the customer…”); un model real l-ar reformula pentru client.
+- După reparare, serviciul nu e folosit imediat: breaker-ul are nevoie de cele 30 s de reset.
+
+#### Cum o spun la interviu
+- „Am stricat la cerere sistemul de comenzi. Primele cinci cereri au durat sub o secundă fiecare: trei încercări cu
+  backoff, apoi un răspuns politic de indisponibilitate, fără stare inventată. După cinci eșecuri breaker-ul s-a
+  deschis și răspunsurile au venit în 80 ms, fără să mai lovească serviciul. După reparare a mai stat deschis 30 de
+  secunde, apoi un apel de probă l-a închis.”
+
 ---
