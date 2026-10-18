@@ -1358,4 +1358,22 @@ tokens: 11420 in total, 878 per case   time: 20.4 s
   la circa 880 de tokeni pe caz; modelul scriptat a obținut 9 din 10, deci evaluarea chiar prinde greșeli. La
   manipulări modelul a încercat uneltele, dar ele au refuzat: siguranța e în cod.”
 
+### Pas 31 — README · 2026-10-18
+
+#### Ce am făcut
+- `README.md` pornit din cel al ghidului, rescris cu **rezultatele mele**: badge CI, stiva, cum rulezi (inclusiv
+  PowerShell), cum dezvolți, API-ul cu codurile de eroare, deciziile, testele, **evaluarea cu modelul real** (tabel fals
+  vs `gpt-4o-mini`), **ce am verificat și ce nu**, cele trei greșeli găsite și reparate, limitele.
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Secțiune „What was verified, and what was not” | Un intervievator citește README-ul; onestitatea e un argument, nu o slăbiciune |
+| Cifrele din README = cifrele din jurnal | Orice cifră spusă la interviu are o dovadă în repo |
+| Link spre DocuAsk | Cele două proiecte formează un sistem; se vede pe GitHub |
+
+#### Cum o spun la interviu
+- „În README am pus și ce n-am verificat: aplicația cap-coadă a rulat cu modelul scriptat, modelul real doar în
+  evaluare, Azure deloc. Prefer să spun exact ce am măsurat.”
+
 ---
