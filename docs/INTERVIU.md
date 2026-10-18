@@ -2,10 +2,10 @@
 
 Repo: https://github.com/FILIPIOAN10/support-pilot · dovezi pas cu pas: `docs/JURNAL.md` · teoria: `docs/STUDIU.md`.
 
-**Regula de aur:** „L-am construit și testat local și în containere, cu CI verde pe GitHub. Nu e în producție și nu a rulat cu un model
-real.” Spui exact ce ai verificat și ce nu.
+**Regula de aur:** „L-am construit și testat local și în containere, cu CI verde pe GitHub. Nu e în producție. Cu un model
+real am rulat doar evaluarea alegerii uneltelor.” Spui exact ce ai verificat și ce nu.
 
-> **Progres (2026-10-18): pașii 1–29 din 32.** Cifrele marcate *(referință)* vin din rularea de verificare a ghidului;
+> **Progres (2026-10-18): pașii 1–30 din 32.** Cifrele marcate *(referință)* vin din rularea de verificare a ghidului;
 > le înlocuiesc cu ale mele când ajung la pasul respectiv. Până atunci **nu le spun ca fiind ale mele**.
 
 ---
@@ -39,8 +39,10 @@ cu Redis.”
 5. **Guardrails.** "Six model calls and five tool calls per run at most, and emails are redacted before the model."
 6. **Integration.** "Explicit timeouts, retries only on transient errors with backoff and jitter, a circuit breaker per
    dependency. When the order system is down, the agent answers politely instead of failing."
-7. **Honest limits.** "I tested it with a scripted model and with the real OpenAI client against a local fake server.
-   Whether a real model picks the right tools needs its own evaluation, which is the next step."
+7. **Measured, with honest limits.** "The tests use a scripted model and the real OpenAI client against a local fake
+   server. Whether a real model picks the right tools I measured separately: 10 messages with the expected tool sequence
+   and 3 manipulation attempts. gpt-4o-mini matched 10 of 10 and stayed safe on 3 of 3, at about 880 tokens per case.
+   It's a small set I wrote, one run, so it's a signal, not proof."
 
 ## 3. Cifrele tale (și în ce condiții)
 
@@ -51,6 +53,7 @@ cu Redis.”
 | Idempotența rambursării | aceeași cheie de două ori → același `RF-0001`; altă cheie → `RF-0002` | build-ul meu, Pas 7 (clienți reali contra simulatorului) |
 | Serviciu care întoarce 503 | 3 încercări, apoi „unavailable” în 0,77 s | build-ul meu, Pas 7 (`/chaos fail`) |
 | Sistemul de comenzi căzut, în containere | cererile 1–5: **~0,9 s** (retry + răspuns politicos); după 5 eșecuri breaker deschis → **0,08 s**; închis la loc după 30 s | build-ul meu, Pas 27 |
+| Alegerea uneltelor, model real (`gpt-4o-mini`) | **10/10** secvențe corecte, **3/3** manipulări oprite; 11 420 de tokeni (~880 / caz), 20,4 s pentru 13 cazuri; modelul fals: 9/10 | build-ul meu, Pas 30 (`evals/tool_choice.py`, o rulare) |
 | CI pe GitHub Actions | **verde** la prima rulare: lint + 57 de teste (95 %) pe MongoDB/Redis service containers în 47 s, apoi imaginea Docker în 61 s; total 1m55s | build-ul meu, Pas 29 |
 | Limitele agentului | 6 apeluri de model, 5 de unelte pe rulare | `config.py` |
 | Timeout-uri | 2 s conectare, 8 s citire (DocuAsk 28 s, 2 încercări) | `config.py`, `clients.py` |
@@ -114,9 +117,12 @@ without an expiry and block a customer forever. Redis runs a Lua script atomical
 
 **Why fail open?** "A broken limiter shouldn't become an outage. The per-run call limits still cap the cost."
 
-**How do you know the agent chooses the right tools?** "With the scripted model I only prove the system's guarantees.
-For a real model I'd build a small evaluation: 15 to 20 customer messages with the expected tool sequence, plus
-adversarial ones, and measure how many sequences match, the tokens per conversation and how often it hits the limits."
+**How do you know the agent chooses the right tools?** "The scripted model only proves the system's guarantees, so I
+wrote a small evaluation: ten customer messages with the exact expected tool sequence, including a refund that must
+check eligibility first and a weather question that must use no tool, plus three manipulation attempts judged by
+effects: no refund created and no other customer's data returned. gpt-4o-mini got 10 of 10 and 3 of 3, about 880
+tokens per case. The scripted model got 9 of 10, which shows the eval actually catches mistakes. It's small and one
+run; next I'd grow it and run it several times."
 
 **How do you track cost?** "Token usage is collected with a callback on every run and added to the conversation in
 MongoDB with an atomic increment."
@@ -126,7 +132,7 @@ MongoDB with an atomic increment."
 | Nu spune | Spune |
 |---|---|
 | „E în producție.” | „L-am construit și rulat local și în containere, cu CI.” |
-| „L-am testat cu GPT-…” | „L-am testat cu un model scriptat și cu clasa OpenAI contra unui server local; evaluarea cu un model real e pasul următor.” |
+| „Merge perfect cu GPT.” | „Testele folosesc un model scriptat; cu `gpt-4o-mini` am rulat un set mic de evaluare: 10/10 și 3/3, o singură rulare.” |
 | „Agentul rezolvă singur orice.” | „Agentul are limite, drepturi minime și aprobare umană la acțiunea cu bani.” |
 | „E imun la prompt injection.” | „Pornesc de la ideea că va fi păcălit; garanțiile sunt în cod, nu în prompt.” |
 | cifrele *(referință)* ca fiind ale tale | doar ce ai rulat tu (vezi secțiunea 3) |
@@ -139,7 +145,7 @@ MongoDB with an atomic increment."
 4. Fără streaming al răspunsului agentului.
 5. Fără tracing distribuit; doar loguri.
 6. Rate limit cu fereastră fixă (vârf la granița dintre ferestre).
-7. Comportamentul unui model real nu e măsurat.
+7. Comportamentul modelului real e măsurat doar pe 13 cazuri scrise de mine, o rulare; aplicația din Docker a rulat cu modelul fals.
 
 ## 8. Cum spui cinstit cum l-ai construit
 
