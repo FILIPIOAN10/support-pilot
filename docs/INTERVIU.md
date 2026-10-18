@@ -5,7 +5,7 @@ Repo: https://github.com/FILIPIOAN10/support-pilot · dovezi pas cu pas: `docs/J
 **Regula de aur:** „L-am construit și testat local și în containere, cu CI. Nu e în producție și nu a rulat cu un model
 real.” Spui exact ce ai verificat și ce nu.
 
-> **Progres (2026-10-18): pașii 1–21 din 32.** Cifrele marcate *(referință)* vin din rularea de verificare a ghidului;
+> **Progres (2026-10-18): pașii 1–22 din 32.** Cifrele marcate *(referință)* vin din rularea de verificare a ghidului;
 > le înlocuiesc cu ale mele când ajung la pasul respectiv. Până atunci **nu le spun ca fiind ale mele**.
 
 ---
@@ -46,7 +46,7 @@ cu Redis.”
 
 | Ce | Cifră | Condiție / sursă |
 |---|---|---|
-| Teste făcute de mine până acum | **27** (7 resilience + 10 unelte + 10 agent), ~1 s, fără containere | build-ul meu, Pas 13 |
+| Teste făcute de mine până acum | **47** (27 fără containere + 20 pe MongoDB și Redis reale, Testcontainers), ~18 s | build-ul meu, Pas 22 |
 | Breaker în fața unui serviciu căzut | cererile 1–2: ~3,7–3,8 s fiecare (3 încercări); cererea 3: **0,00 s**, fără apel | build-ul meu, Pas 6 (`BREAKER_FAILURES=2`, `HTTP_CONNECT_TIMEOUT=0.5`) |
 | Idempotența rambursării | aceeași cheie de două ori → același `RF-0001`; altă cheie → `RF-0002` | build-ul meu, Pas 7 (clienți reali contra simulatorului) |
 | Serviciu care întoarce 503 | 3 încercări, apoi „unavailable” în 0,77 s | build-ul meu, Pas 7 (`/chaos fail`) |
@@ -56,7 +56,7 @@ cu Redis.”
 | Redis căzut | fail-open în **0,62 s** cu clientul aplicației; **~9,8 s** cu `redis.Redis(...)` (retry implicit în redis-py 8) | build-ul meu, Pas 15 (măsurat) |
 | Teste la final | 57, acoperire 95 %, MongoDB și Redis reale | *(referință)* |
 | Aprobare după restart | reușită după un restart simulat (serviciu, agent și `MongoDBSaver` noi, aceeași bază) | build-ul meu, Pas 16; cu `docker compose restart api`: referință, Faza H |
-| Doi admini simultan | revendicarea în Mongo: **exact 1 câștigător** din 2 thread-uri pornite cu o barieră | build-ul meu, Pas 14 (testul complet „o singură rambursare”: referință, Faza G) |
+| Doi admini simultan | **o singură rambursare** (test cu două thread-uri și o barieră, Mongo real); revendicarea: exact 1 câștigător | build-ul meu, Pașii 14 și 22 |
 
 ## 4. Deciziile pe care le poți apăra
 

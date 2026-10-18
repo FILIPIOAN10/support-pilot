@@ -965,4 +965,42 @@ fără X-Customer-Id    → {"detail":"X-Customer-Id is required"}
   are baza lui, ștearsă la final. În CI aceleași fixturi folosesc containerele de serviciu GitHub. O fixtură construiește
   serviciul peste baza reală, iar apelată de două ori simulează un restart.”
 
+### Pas 22 — Testele serviciului, ale limitei de rate și ale API-ului · 2026-10-18
+
+#### Ce am făcut
+- `tests/test_service.py` (7 teste, MongoDB real), `tests/test_ratelimit.py` (5, Redis real), `tests/test_api.py`
+  (8, aplicația reală `main.app` prin `TestClient`, cu `dependency_overrides` peste bazele din Testcontainers).
+
+#### Garanțiile testate (cele mai importante)
+| Test | Garanția |
+|---|---|
+| refund pauses … survives a restart | `make_service()` de două ori: un proces nou aprobă din checkpoint-ul din Mongo |
+| two admins … exactly one refund | două thread-uri pornite cu o barieră → `["ok", "too late"]`, o singură rambursare |
+| failed resume puts the approval back | model `Exploding` → aprobarea revine în `pending`; a doua încercare reușește |
+| decision only once | după o respingere, o aprobare dă `NothingToApprove`; auditul arată cine a decis |
+| someone else's conversation | invizibilă: `ConversationNotFound` la chat și la citire |
+| rate limit (Redis) | 3 trec, al 4-lea nu; clienți separați; contorul are mereu expirare; `Retry-After` corect; fail-open |
+| full refund story over HTTP | 200 → 409 → 401 (cheie de client pe ruta de admin) → listă → aprobare → al doilea admin 404 → coadă goală |
+| 429 + Retry-After, 422, health, readiness cu Redis căzut | coduri și header-e, readiness `"redis": "down"` dar ready |
+
+#### Ce am schimbat față de ghid
+În `test_ratelimit.py` și `test_api.py`, clientul „Redis căzut” era `redis.Redis(host=..., port=1, ...)`, care are
+retry implicit (Pas 15): fiecare test dura **5,4 s** și **6,6 s**. L-am construit cu `redis.Redis.from_url(...)`, ca
+aplicația. Același lucru verificat; suita completă a scăzut de la **30 s la ~18–20 s** (măsurat pe copia de probă).
+
+#### Ce am verificat (rezultate reale, pe codul meu)
+- `uv run pytest -q --durations=3` → **`47 passed in 17.67s`** (27 vechi + 20 noi); cel mai lent pas e pornirea
+  containerelor (6,78 s, setup-ul primului test API). Rulat de mine; în terminal nu a fost copiat rezultatul.
+- Cele trei fișiere au același sens ca referința corectată (AST identic), `ruff` curat.
+
+#### Capcane
+- `TestClient(app)` **fără** `with`: cu `with` ar rula `lifespan`, care ar construi serviciul real pe Mongo-ul de dev.
+- `app.dependency_overrides.clear()` după fiecare test, ca înlocuirile să nu treacă dintr-un test în altul.
+- O condiție de cursă se prinde doar cu pornire simultană (barieră); un test secvențial ar trece mereu.
+
+#### Cum o spun la interviu
+- „Garanțiile importante sunt teste automate pe baze reale: aprobare după restart, doi admini simultan cu o barieră →
+  o singură rambursare, o reluare eșuată pusă înapoi în coadă, povestea completă prin HTTP. Am scurtat suita cu o
+  treime: clientul Redis «căzut» din teste avea retry implicit.”
+
 ---
