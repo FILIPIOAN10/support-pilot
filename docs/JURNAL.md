@@ -1003,4 +1003,40 @@ aplicația. Același lucru verificat; suita completă a scăzut de la **30 s la 
   o singură rambursare, o reluare eșuată pusă înapoi în coadă, povestea completă prin HTTP. Am scurtat suita cu o
   treime: clientul Redis «căzut» din teste avea retry implicit.”
 
+### Pas 23 — Clienții HTTP reali, simulatorul și contractul cu OpenAI · 2026-10-18
+
+#### Ce am făcut
+- `tests/servers.py`: `RunningApp` pornește o aplicație FastAPI pe un port liber (`bind(("127.0.0.1", 0))`), într-un
+  thread, ca testele să vorbească prin **HTTP real**.
+- `tests/test_http_clients.py` (4): clienții reali (httpx + retry + breaker) contra simulatorului de comenzi.
+- `tests/test_orders_mock.py` (4): cheia, 404, idempotența, chaos mode.
+- `tests/fake_openai.py`: un server local care vorbește formatul OpenAI `/v1/chat/completions`, inclusiv `tool_calls`,
+  și păstrează cererile primite (`requests_seen`).
+- `tests/test_contract_openai.py` (2): clasa reală `ChatOpenAI` + agentul + uneltele mele contra serverului fals.
+
+#### Garanțiile testate
+| Test | Garanția |
+|---|---|
+| 404 → None | maparea „nu există” prin rețea reală |
+| același `Idempotency-Key` | aceeași rambursare |
+| fails fast | după 2 eșecuri breaker-ul respinge în **< 50 ms**, chiar dacă serviciul și-a revenit |
+| read timeout | serviciul doarme 10 s, clientul renunță după 3 × 0,5 s + backoff |
+| **contract OpenAI** | prima cerere spre furnizor: modelul, promptul de sistem primul, **cele 4 scheme de unelte**, iar schema `get_order` are **doar `order_id`**; a doua cerere se termină cu `assistant` + `tool` (rezultatul s-a întors la model) |
+| cheie lipsă | `ProviderConfigError` |
+
+#### Ce am verificat (rezultate reale)
+- `pytest tests/test_http_clients.py tests/test_orders_mock.py tests/test_contract_openai.py -v` → **10 PASSED**,
+  `10 passed in 13.04s`.
+- `uv run pytest -q` → **`57 passed in 29.04s`** (cifra din ghid).
+- Toate cele 5 fișiere au același sens ca referința (AST identic); `ruff check .` și `ruff format --check .` curate.
+
+#### Capcane
+- Testul de contract dovedește **formatul și integrarea** cu OpenAI, nu cum alege un model real (serverul e scriptat).
+- Serverele de test pe `127.0.0.1`, nu `localhost` (Windows: ~2 s pe conexiune nouă, Pas 19).
+
+#### Cum o spun la interviu
+- „Un test de contract rulează clasa reală `ChatOpenAI` cu agentul și uneltele mele contra unui server local care
+  vorbește formatul OpenAI. Verific exact ce primește furnizorul: promptul de sistem, cele patru scheme de unelte,
+  `get_order` doar cu `order_id`, iar rezultatul uneltei se întoarce modelului. Fără cheie, fără cost.”
+
 ---
