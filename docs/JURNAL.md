@@ -870,4 +870,60 @@ Cu `ORDERS_BASE_URL=http://localhost:9000`, prima cerere pe o conexiune nouă sp
   cerere are un request id într-un `ContextVar`, prezent în toate logurile, inclusiv în apelurile spre alte servicii.
   Am găsit că linia de log a cererii pierdea id-ul, pentru că resetarea se făcea înainte; am mutat-o după log.”
 
+### Pas 20 — Tot sistemul pornit local: SupportPilot + DocuAsk + comenzi · 2026-10-18
+
+#### Ce am făcut
+```text
+curl ──► SupportPilot :8001 ──► orders_mock :9000      (comenzile)
+                         └────► DocuAsk     :8000 ──► Postgres+pgvector :5434, baza docuask_shop (politicile)
+                         └────► MongoDB :27018, Redis :6380
+```
+- `shop-docs/`: cele 4 politici ale magazinului (returns, shipping, warranty, payment), copiate din referință (date,
+  nu cod).
+- DocuAsk (Proiectul 1) pornit pe o **bază separată** `docuask_shop` (`CREATE DATABASE`, `alembic upgrade head`,
+  `$env:DATABASE_URL` doar în terminalul lui), cu politicile încărcate prin `POST /v1/documents`.
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| DocuAsk pe `docuask_shop`, nu pe `docuask` | Politicile magazinului nu se amestecă cu documentele HR; setul de evaluare din Proiectul 1 rămâne valabil |
+| `DATABASE_URL` setat doar în terminal | `.env`-ul DocuAsk rămâne neatins |
+| Cele două proiecte vorbesc prin HTTP | Un sistem de servicii, cu timeout, retry și breaker pe fiecare apel |
+
+#### Ce am verificat (rezultate reale)
+```text
+1) {"status":"open","reply":"Order 1002 is shipped (carrier: FastCourier, estimated delivery: 2026-10-20)."}
+2) {"status":"open","reply":"Items can be returned within 30 days of delivery. The item must be unused, in its original packaging and accompanied by the order number. [1]\nSources: returns.md (Returns Policy > Return window)"}
+3) {"status":"open","reply":"No order 1003 was found for this customer."}
+4) {"status":"open","reply":"All products sold to consumers in the EU have a legal guarantee of 2 years from delivery. ... [1]\nSources: warranty.md (Warranty > Legal guarantee)"}
+fără cheie            → {"detail":"Missing or invalid API key"}
+fără X-Customer-Id    → {"detail":"X-Customer-Id is required"}
+```
+- Încărcare: 4 × `"status":"created"` (payment 4 bucăți, returns 4, shipping 4, warranty 3).
+- Comanda altui client arată ca una inexistentă; politicile vin cu sursa, din RAG-ul meu.
+
+#### Ce s-a întâmplat pe drum (și ce am învățat)
+- **Containerele s-au oprit** peste noapte (Docker repornit): `docker exec` a dat `container ... is not running`, iar
+  `alembic upgrade head` a stat fără niciun mesaj, așteptând o bază care nu exista. Remediu:
+  `docker start docuask-db sp-mongo sp-redis`, apoi serverele din nou. Primul lucru după o repornire.
+- **Prima dată am uitat să încarc politicile**: DocuAsk avea 0 documente, iar agentul a răspuns la „How do returns
+  work?” cu „The policies do not cover this question. Do not guess; offer to pass it to a human agent.” Sistemul **nu a
+  inventat** un răspuns: refuzul DocuAsk a ajuns cinstit la client. După încărcare, același mesaj a primit răspunsul cu
+  sursă.
+
+#### Capcane
+- Modelul e fals: răspunsul de politică e textul DocuAsk cu `[1]` și sursa, nu o reformulare a unui LLM.
+- În PowerShell, JSON-ul se trimite prin pipe: `'{...}' | curl.exe ... --data-binary "@-"`.
+
+#### Cum o spun la interviu
+- „Am rulat local tot sistemul: agentul, simulatorul de comenzi și serviciul meu RAG din primul proiect, pe o bază
+  separată cu politicile magazinului. O întrebare de politică ajunge la DocuAsk prin HTTP și se întoarce cu sursa. Când
+  DocuAsk nu avea documente, agentul n-a inventat nimic: a spus că politicile nu acoperă întrebarea și a oferit un om.”
+
+### ✅ Checkpoint F — API-ul
+- [x] cele trei răspunsuri din ghid (comandă, politică cu sursă, comanda altcuiva) pe aplicația mea
+- [x] 401 fără cheie, 400 fără `X-Customer-Id`
+- [x] pot explica de ce conversația altcuiva dă 404, nu 403
+- [x] commit pe fiecare pas (17–20)
+
 ---
