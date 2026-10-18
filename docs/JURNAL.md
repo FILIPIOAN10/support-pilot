@@ -927,3 +927,42 @@ fără X-Customer-Id    → {"detail":"X-Customer-Id is required"}
 - [x] commit pe fiecare pas (17–20)
 
 ---
+
+## Faza G — Teste pe baze reale
+
+### Pas 21 — `conftest.py` complet: MongoDB și Redis reale în teste · 2026-10-18
+
+#### Ce am făcut
+- Am înlocuit `conftest.py` minimal cu varianta completă: sus 4 fixturi noi (`mongo_url`, `redis_url` cu
+  `scope="session"`; `mongo`, `redis_client` per test), jos `make_service`. Serviciile false au rămas la fel.
+
+#### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Testcontainers (`mongo:8`, `redis:7-alpine`), un container pe sesiune | Baze reale în teste; pornirea durează secunde, deci o singură dată |
+| `TEST_MONGO_URL` / `TEST_REDIS_URL` dacă există | În CI se folosesc containerele de serviciu GitHub, aceleași teste |
+| O bază nouă `test_<aleator>` per test, ștearsă la final; `flushdb()` per test | Teste izolate, în orice ordine |
+| `make_service()` apelat de două ori = restart simulat | Agent nou + `MongoDBSaver` nou, aceeași bază |
+| Fixturi session „leneșe” | Testele care nu cer `mongo` / `redis_client` rulează fără Docker |
+| Testele nu folosesc `sp-mongo` / `sp-redis` | Datele de dezvoltare rămân neatinse |
+
+#### Ce am verificat (rezultate reale)
+- `uv run pytest -q` → `27 passed in 0.69s` (fără containere).
+- Testul temporar pe baze reale (rulat de mine pe codul meu; în terminal fișierul a fost creat și șters fără rulare):
+  ```text
+  mongo database: test_64a57bd2 | collections: ['approvals', 'checkpoint_writes', 'checkpoints', 'conversations']
+  redis ping: True
+  1 passed in 9.00s
+  ```
+  Containerele au pornit și s-au oprit singure; restartul simulat a mers și pe Mongo-ul din Testcontainers.
+- Fișierul are același sens ca referința (AST identic), `ruff` curat.
+
+#### Capcane
+- Docker Desktop trebuie să fie pornit pentru testele cu baze reale.
+
+#### Cum o spun la interviu
+- „Testele care contează rulează pe MongoDB și Redis reale, pornite de Testcontainers o dată pe sesiune; fiecare test
+  are baza lui, ștearsă la final. În CI aceleași fixturi folosesc containerele de serviciu GitHub. O fixtură construiește
+  serviciul peste baza reală, iar apelată de două ori simulează un restart.”
+
+---

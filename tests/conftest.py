@@ -1,12 +1,63 @@
-"""Fixturi minime pentru Faza C și D: doar clienți falși, fără containere."""
+"""Shared fixtures. MongoDB and Redis are REAL, started in Docker by Testcontainers (or taken from TEST_MONGO_URL /
+TEST_REDIS_URL, which is how CI points at its service containers). The model is the offline scripted one."""
 
+import os
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import redis
+from langgraph.checkpoint.mongodb import MongoDBSaver
+from pymongo import MongoClient
 
+from supportpilot.agent import build_agent
 from supportpilot.config import Settings
+from supportpilot.fake import ScriptedSupportModel
 from supportpilot.resilience import ServiceUnavailable
+from supportpilot.service import SupportService
+from supportpilot.store import Store
 from supportpilot.tools import build_tools
+
+
+@pytest.fixture(scope="session")
+def mongo_url():
+    url = os.environ.get("TEST_MONGO_URL")
+    if url:
+        yield url
+        return
+    from testcontainers.community.mongodb import MongoDbContainer
+
+    with MongoDbContainer("mongo:8") as mongo:
+        yield mongo.get_connection_url()
+
+
+@pytest.fixture(scope="session")
+def redis_url():
+    url = os.environ.get("TEST_REDIS_URL")
+    if url:
+        yield url
+        return
+    from testcontainers.community.redis import RedisContainer
+
+    with RedisContainer("redis:7-alpine") as r:
+        yield f"redis://{r.get_container_host_ip()}:{r.get_exposed_port(6379)}/0"
+
+
+@pytest.fixture
+def mongo(mongo_url):
+    client = MongoClient(mongo_url, tz_aware=True)
+    db = client[f"test_{uuid.uuid4().hex[:8]}"]  # a fresh database per test: nothing leaks between tests
+    yield db
+    client.drop_database(db.name)
+    client.close()
+
+
+@pytest.fixture
+def redis_client(redis_url):
+    client = redis.Redis.from_url(redis_url, socket_timeout=1)
+    client.flushdb()
+    yield client
+    client.close()
 
 
 @pytest.fixture
@@ -52,10 +103,7 @@ class FakeOrders:
         if self.down:
             raise ServiceUnavailable("orders is unavailable")
         if idempotency_key not in self.refunds:
-            self.refunds[idempotency_key] = {
-                "refund_id": f"RF-{len(self.refunds) + 1:04d}",
-                "status": "pending",
-            }
+            self.refunds[idempotency_key] = {"refund_id": f"RF-{len(self.refunds) + 1:04d}", "status": "pending"}
         return self.refunds[idempotency_key]
 
 
@@ -88,3 +136,17 @@ def docuask():
 @pytest.fixture
 def tools(orders, docuask):
     return build_tools(orders, docuask)
+
+
+@pytest.fixture
+def make_service(mongo, settings, tools):
+    """Builds a service over the real Mongo database. Call it twice to simulate a restart of the process."""
+
+    def build(model=None, tools_=None):
+        saver = MongoDBSaver(mongo.client, db_name=mongo.name)
+        store = Store(mongo)
+        store.ensure_indexes()
+        agent = build_agent(model or ScriptedSupportModel(), tools_ or tools, saver, settings)
+        return SupportService(agent, store), store
+
+    return build
