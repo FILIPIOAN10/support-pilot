@@ -8,7 +8,7 @@ reale)** și **cum o spun**.
 Regula de onestitate: spun „construit și testat local”, nu „în producție”. Ce nu a rulat încă e marcat explicit.
 
 Pentru învățat: `docs/STUDIU.md` (fișa completă), `docs/STUDIU-SIMPLU.md` (15 minute), `docs/INTERVIU.md` (script de
-interviu, RO + EN), `docs/flashcards.html` (35 de cartonașe; se deschide în browser). Le actualizez pe măsură ce avansez.
+interviu, RO + EN), `docs/flashcards.html` (58 de cartonașe, inclusiv pachetele „Explică proiectul”; se deschide în browser). Le actualizez pe măsură ce avansez.
 
 ---
 
@@ -1379,7 +1379,7 @@ tokens: 11420 in total, 878 per case   time: 20.4 s
 ### Pas 32 — Cum o spun la interviu · 2026-10-18
 Materialul de învățat e în `docs/`: `INTERVIU.md` (pitch RO + EN, povestea de 2 minute, cifrele mele cu sursa fiecăreia,
 întrebări probabile, ce nu spun, slăbiciuni, demo de 5 minute), `STUDIU.md`, `STUDIU-SIMPLU.md`, `flashcards.html`
-(35 de cartonașe). Toate cifrele din ele sunt acum din build-ul meu; nu mai e nimic marcat „din referință”.
+(58 de cartonașe: 35 pe subiecte + 15 „Explică proiectul (RO)” + 8 „Explain it (EN)”, în ordinea poveștii). Toate cifrele din ele sunt acum din build-ul meu; nu mai e nimic marcat „din referință”.
 
 ### ✅ Checkpoint J (final)
 - [x] am rulat cu un model real (evaluarea alegerii uneltelor: 10/10, 3/3) și spun cinstit ce n-a rulat cu el
