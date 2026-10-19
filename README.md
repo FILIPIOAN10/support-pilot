@@ -44,6 +44,18 @@ PowerShell: send the JSON body through stdin, `'{"message":"Where is my order 10
 tool-calling model; nothing else changes. Customers `c-100` (orders 1001, 1002) and `c-200` (1003, 1004) exist in the
 mock order system; `POST localhost:9000/chaos {"mode":"fail"|"slow"|"ok"}` breaks it on demand.
 
+## Try it in the browser
+
+Open **http://localhost:8001/**: a one-page UI served by the API (plain HTML and JavaScript, no build step).
+- **Customer** panel: pick `c-100` or `c-200`, chat with the agent (example messages included); the badge shows when a
+  conversation is *waiting for a human*.
+- **Support colleague** panel: the pending refunds with the exact tool arguments, **Approve** / **Reject** with a note;
+  the customer's chat updates with the result.
+- Every reply shows its HTTP status, time and request id (the same id as in `docker compose logs api`).
+
+Keys are typed in the page (`dev-gateway-key`, `dev-admin-key` locally) and kept only in the browser tab. All server
+text is rendered with `textContent`, and the page is served with a strict Content-Security-Policy.
+
 ## Develop
 
 ```bash
@@ -89,7 +101,7 @@ Customer routes need `X-API-Key` (the shop's gateway) and `X-Customer-Id`; admin
 
 ## Tests
 
-57 tests, 95 % coverage, green in CI (lint, tests on MongoDB and Redis service containers, then the Docker image build):
+58 tests, 95 % coverage, green in CI (lint, tests on MongoDB and Redis service containers, then the Docker image build):
 breaker and retry logic, every tool (including cross-customer access), the agent loop with approve / reject /
 loop-limit / PII scenarios and a deliberately compromised model, the service against **real MongoDB and Redis**
 (Testcontainers), a restart in the middle of an approval, two admins racing (two threads, one barrier, one refund), the

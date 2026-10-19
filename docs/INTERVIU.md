@@ -157,15 +157,22 @@ ai verificat fiecare pas, iar asistentul a explicat, a comparat cu o referință
 
 Ca să fie adevărat, **să poți explica fiecare fișier**. Dacă n-ai un răspuns, spune „nu am testat asta”, nu inventa.
 
-## 9. Demo de 5 minute (când e gata, Faza H)
+## 9. Demo de 5 minute, în pagina de la http://localhost:8001/
 
-1. `docker compose up -d --build` (și DocuAsk pornit, cu `shop-docs/` încărcate).
-2. „Where is my order 1002?” ca `c-100` → starea din sistemul de comenzi.
-3. „How do returns work?” → răspuns cu sursa adusă de DocuAsk.
-4. „Where is my order 1003?” ca `c-100` → „nu există” (e a lui `c-200`).
-5. „I want a refund for order 1001” → `awaiting_approval`; `GET /v1/admin/approvals` arată argumentele exacte.
-6. `docker compose restart api`, apoi aprobi → rambursarea apare în conversație.
-7. `/chaos {"mode":"fail"}` → agentul răspunde politicos, apoi breaker-ul răspunde instant.
+Pregătire: `docker start docuask-db`, DocuAsk pe 8000 (baza `docuask_shop`, cu `shop-docs/` încărcate),
+`docker compose up -d` în `supportpilot`, apoi pagina; cheile `dev-gateway-key` și `dev-admin-key`.
+
+1. **Client `c-100`:** „Where is my order 1002?” → starea din sistemul de comenzi.
+2. „How do returns work?” → răspuns cu sursa adusă de DocuAsk (RAG-ul meu).
+3. „Where is my order 1003?” → „nu există pentru acest client” (e a lui `c-200`).
+4. „I want a refund for order 1001, shoes too small” → eticheta **waiting for a human**; un mesaj nou → 409.
+5. **Panoul colegului:** Refresh → `request_refund {"order_id":"1001", ...}` → arăți că omul vede exact ce ar face
+   agentul.
+6. (opțional) `docker compose restart api` în terminal, apoi **Approve** → chatul arată „Done. Refund RF-000N”:
+   pauza a supraviețuit restartului.
+7. Copiezi request id-ul de sub răspuns și îl cauți în `docker compose logs api`: `GET /orders/1001`, apoi
+   `POST /orders/1001/refunds`, sub același id.
+8. (opțional) `/chaos {"mode":"fail"}` pe 9000 → agentul răspunde politicos; după 5 eșecuri, răspunsul vine instant.
 
 ## 10. Întrebări de pus tu
 

@@ -1427,3 +1427,50 @@ Evaluarea cu mai multe cazuri și mai multe rulări; scenariile din Docker cu `g
 header de gateway; streaming; rate limit cu fereastră glisantă.
 
 ---
+
+## Extra (după ghid) — pagina cu interfață · 2026-10-19
+
+### Ce am făcut
+- `src/supportpilot/static/index.html`: o singură pagină (HTML + JavaScript simplu, fără framework sau build), servită
+  de API la `GET /` (`main.py`: `home()` cu `FileResponse` și antete de securitate). La fel ca pagina de la DocuAsk.
+  - panoul **Client**: alegi `c-100` / `c-200`, scrii sau apeși mesaje-exemplu, vezi conversația ca pe un chat; eticheta
+    arată „open” sau „waiting for a human”;
+  - panoul **Coleg de la suport**: rambursările în așteptare, cu argumentele exacte (`request_refund {"order_id":"1001",
+    ...}`), **Approve** / **Reject** cu notă; după decizie, chatul clientului se reîncarcă singur;
+  - fiecare răspuns arată codul HTTP, timpul și request id-ul (același ca în `docker compose logs api`); sus, starea
+    serviciului (`/health/ready`).
+- Un test nou: pagina merge fără cheie, are CSP și nu conține `innerHTML`. README: secțiunea „Try it in the browser”.
+
+### Decizii și de ce
+| Decizie | De ce |
+|---|---|
+| Fără framework, fără build | O pagină de demonstrație; nimic de întreținut, servită chiar de API |
+| Tot textul cu `textContent`, niciodată `innerHTML` | Răspunsurile vin de la un model și de la clienți: nu pot injecta cod în pagină (verificat de test) |
+| Content-Security-Policy strictă, `connect-src 'self'` | Pagina vorbește doar cu propriul API; nimic extern |
+| Cheile tastate în pagină, ținute doar în tab (`sessionStorage`) | Nu apar în codul paginii și nici în git |
+| Pagina face doar ce face API-ul | Nicio logică nouă; demonstrează exact fluxurile testate |
+
+### Ce am verificat (rezultate reale)
+- Pe stiva mea Docker (`docker compose up -d --build`, 4 servicii healthy), în browser la `http://localhost:8001/`:
+  întrebare → răspuns; rambursare 1001 → „waiting for a human”; un mesaj nou în timpul așteptării → 409 afișat;
+  colegul vede `request_refund {"order_id":"1001",...}` → **Approve** → „Done. Refund RF-0001 is registered and
+  pending.”, iar chatul se actualizează; **Reject** cu nota „Item was worn” → clientul vede motivul. Pe ecran de
+  telefon (375 px): fără scroll orizontal.
+- `uv run pytest -q` → **`58 passed`**; `ruff` curat.
+
+### Capcane
+- Am pus prima dată fișierele în folderul **de referință al ghidului** (`proiect-2-supportpilot-cod`), nu în repo-ul
+  meu: pagina mergea, dar din alt folder, și nu ajungea pe GitHub. Le-am mutat în `supportpilot` și am adus referința
+  înapoi la starea ei. Verific mereu calea din prompt (`PS ...\supportpilot>`).
+- Docker Desktop a rămas blocat după o repornire (comenzile `docker` nu mai răspundeau): închis complet și pornit din
+  nou.
+- Browserul poate ține în cache pagina veche după o modificare: reîncărcare forțată (Ctrl+F5).
+- Fără DocuAsk pornit pe 8000, întrebările de politică primesc „unavailable” (corect, prin breaker și retry).
+
+### Cum o spun la interviu
+- „Am adăugat o pagină simplă servită de API: în stânga clientul vorbește cu agentul, în dreapta un coleg vede
+  rambursările în așteptare cu argumentele exacte și le aprobă sau respinge. Fiecare răspuns arată request id-ul, deci
+  pot arăta aceeași cerere în loguri. Textul e afișat doar cu `textContent`, cu o politică CSP strictă, pentru că
+  răspunsurile vin de la un model.”
+
+---

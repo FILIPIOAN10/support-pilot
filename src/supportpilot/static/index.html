@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SupportPilot</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --text: #1b2230; --muted: #5a6475; --line: #dde1e8;
+    --accent: #2457d6; --accent-text: #ffffff; --ok: #12755a; --warn: #8f5600; --bad: #b3261e;
+    --me: #e8eefc; --bot: #eef1f4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --card: #1b2029; --text: #e8ebf1; --muted: #9aa4b5; --line: #2c3442;
+      --accent: #7aa2ff; --accent-text: #0e1420; --ok: #4cc39c; --warn: #e5a53a; --bad: #ff8a80;
+      --me: #22304d; --bot: #232a35;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, sans-serif; }
+  header, main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: end; justify-content: space-between; }
+  h1 { margin: 0; font-size: 1.6rem; }
+  h2 { margin: 0 0 4px; font-size: 1.1rem; }
+  .tagline { margin: 2px 0 0; color: var(--muted); }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); align-items: start; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .hint { margin: 0 0 12px; color: var(--muted); font-size: .9rem; }
+  label { font-size: .85rem; color: var(--muted); }
+  input, select, textarea {
+    width: 100%; padding: 8px 10px; color: var(--text); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px; font: inherit;
+  }
+  textarea { min-height: 64px; resize: vertical; }
+  .fields { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; }
+  .fields > div { display: flex; flex-direction: column; gap: 4px; }
+  button {
+    font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--card); color: var(--text); cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .55; cursor: progress; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button.danger { color: var(--bad); }
+  button.small { padding: 4px 10px; font-size: .85rem; }
+  button.chip { padding: 4px 10px; font-size: .85rem; border-radius: 999px; color: var(--muted); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+  .spread { justify-content: space-between; }
+  .chat { margin-top: 12px; min-height: 160px; max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+          padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; }
+  .msg { max-width: 85%; padding: 8px 12px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.customer { align-self: flex-end; background: var(--me); }
+  .msg.assistant { align-self: flex-start; background: var(--bot); }
+  .empty { color: var(--muted); font-size: .9rem; margin: auto; text-align: center; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: .8rem; font-weight: 600; border: 1px solid currentColor; }
+  .badge.open { color: var(--ok); }
+  .badge.awaiting_approval { color: var(--warn); }
+  .badge.none { color: var(--muted); }
+  .badge.up { color: var(--ok); }
+  .badge.down { color: var(--bad); }
+  .notice { margin: 8px 0 0; white-space: pre-line; font-size: .9rem; }
+  .error { color: var(--bad); }
+  .ok { color: var(--ok); }
+  .meta { margin-top: 6px; font-size: .8rem; color: var(--muted); }
+  .approval { border-top: 1px solid var(--line); padding: 10px 0; }
+  .approval:first-child { border-top: none; }
+  .args { margin: 4px 0; font-size: .9rem; }
+  .args code { overflow-wrap: anywhere; }
+  footer { max-width: 1100px; margin: 0 auto; padding: 8px 16px 24px; color: var(--muted); font-size: .85rem; }
+  a { color: var(--accent); }
+  @media (max-width: 520px) { .fields { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>SupportPilot</h1>
+    <p class="tagline">A support agent that looks things up by itself and waits for a human before any refund.</p>
+  </div>
+  <div class="row">
+    <span class="muted">Service:</span> <span id="health" class="badge none">checking…</span>
+    <button id="health-btn" class="small" type="button">Check</button>
+  </div>
+</header>
+
+<main>
+  <div class="grid">
+    <section class="card" aria-labelledby="customer-title">
+      <div class="row spread">
+        <h2 id="customer-title">Customer</h2>
+        <span id="conv-status" class="badge none">no conversation</span>
+      </div>
+      <p class="hint">c-100 owns orders 1001 (delivered 5 days ago) and 1002 (shipped); c-200 owns 1003 (delivered 45 days ago) and 1004.</p>
+      <div class="fields">
+        <div>
+          <label for="gw-key">Gateway key (<code>dev-gateway-key</code> locally)</label>
+          <input id="gw-key" type="password" autocomplete="off" spellcheck="false">
+        </div>
+        <div>
+          <label for="customer">Customer</label>
+          <select id="customer">
+            <option value="c-100">c-100</option>
+            <option value="c-200">c-200</option>
+          </select>
+        </div>
+      </div>
+      <div id="chat" class="chat" aria-live="polite"><p class="empty">Start a conversation below.</p></div>
+      <div class="row" id="examples" aria-label="Example messages"></div>
+      <div class="row">
+        <textarea id="message" maxlength="2000" placeholder="Write a message, e.g. Where is my order 1002?"></textarea>
+      </div>
+      <div class="row">
+        <button id="send" class="primary" type="button">Send</button>
+        <button id="new-conv" type="button">New conversation</button>
+        <button id="reload-conv" type="button">Reload conversation</button>
+      </div>
+      <p id="customer-notice" class="notice" role="status"></p>
+    </section>
+
+    <section class="card" aria-labelledby="admin-title">
+      <div class="row spread">
+        <h2 id="admin-title">Support colleague</h2>
+        <button id="refresh" class="small" type="button">Refresh</button>
+      </div>
+      <p class="hint">Every refund stops here. You see exactly what the agent would do, and approve or reject it.</p>
+      <div class="fields">
+        <div>
+          <label for="admin-key">Admin key (<code>dev-admin-key</code> locally)</label>
+          <input id="admin-key" type="password" autocomplete="off" spellcheck="false">
+        </div>
+        <div>
+          <label for="admin-name">Your name (goes into the audit)</label>
+          <input id="admin-name" type="text" value="maria" maxlength="64" autocomplete="off">
+        </div>
+      </div>
+      <div id="approvals"><p class="muted">Press Refresh to see pending refunds.</p></div>
+      <p id="admin-notice" class="notice" role="status"></p>
+    </section>
+  </div>
+</main>
+
+<footer>
+  The agent runs with the scripted model unless LLM_PROVIDER says otherwise. Every reply shows its HTTP status, time and
+  request id, the same id you find in <code>docker compose logs api</code>. The REST API is documented at
+  <a href="/docs">/docs</a>.
+</footer>
+
+<script>
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+const EXAMPLES = [
+  "Where is my order 1002?",
+  "How do returns work?",
+  "I want a refund for order 1001, shoes too small",
+  "Where is my order 1003?",
+  "What is the warranty on electronics?",
+];
+let conversationId = null;
+
+// Every piece of text from the server is set with textContent, so a reply can never inject markup into the page.
+function el(tag, text, cls) {
+  const node = document.createElement(tag);
+  if (text !== undefined && text !== null) node.textContent = text;
+  if (cls) node.className = cls;
+  return node;
+}
+
+function say(id, text, kind) {
+  const node = $(id);
+  node.className = "notice" + (kind ? " " + kind : "");
+  node.textContent = text;
+}
+
+function meta(res, ms) {
+  return `${res.status} · ${ms} ms · request id ${res.headers.get("X-Request-ID") || "-"}`;
+}
+
+async function call(path, headers, body) {
+  const started = performance.now();
+  const options = { method: body === undefined ? "GET" : "POST", headers: { ...headers } };
+  if (body !== undefined) {
+    options.headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(body);
+  }
+  const res = await fetch(path, options);
+  const ms = Math.round(performance.now() - started);
+  let data = null;
+  try { data = await res.json(); } catch (_) { /* empty body */ }
+  return { res, ms, data };
+}
+
+function detail(r) {
+  const d = r.data && r.data.detail;
+  if (Array.isArray(d)) return d.map((e) => e.msg).join("; ");
+  if (r.res.status === 429) return `${d} (try again in ${r.res.headers.get("Retry-After")} s)`;
+  return d || `HTTP ${r.res.status}`;
+}
+
+function customerHeaders() {
+  return { "X-API-Key": $("gw-key").value.trim(), "X-Customer-Id": $("customer").value };
+}
+
+function adminHeaders() {
+  return { "X-Admin-Key": $("admin-key").value.trim(), "X-Admin-User": $("admin-name").value.trim() || "admin" };
+}
+
+function setStatus(status) {
+  const badge = $("conv-status");
+  badge.className = "badge " + (status || "none");
+  badge.textContent = status === "awaiting_approval" ? "waiting for a human" : status === "open" ? "open" : "no conversation";
+}
+
+function addMessage(role, text) {
+  const chat = $("chat");
+  const empty = chat.querySelector(".empty");
+  if (empty) empty.remove();
+  chat.append(el("div", text, "msg " + role));
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function resetChat() {
+  conversationId = null;
+  $("chat").replaceChildren(el("p", "Start a conversation below.", "empty"));
+  setStatus(null);
+}
+
+async function send(text) {
+  const message = (text || $("message").value).trim();
+  if (!message) { say("customer-notice", "Write a message first.", "error"); return; }
+  $("send").disabled = true;
+  try {
+    const body = { message };
+    if (conversationId) body.conversation_id = conversationId;
+    const r = await call("/v1/chat", customerHeaders(), body);
+    if (!r.res.ok) { say("customer-notice", `${detail(r)}\n${meta(r.res, r.ms)}`, "error"); return; }
+    addMessage("customer", message);
+    addMessage("assistant", r.data.reply);
+    conversationId = r.data.conversation_id;
+    setStatus(r.data.status);
+    $("message").value = "";
+    const extra = r.data.status === "awaiting_approval" ? "\nThe refund is waiting: decide it in the Support colleague panel." : "";
+    say("customer-notice", meta(r.res, r.ms) + extra, r.data.status === "awaiting_approval" ? "" : "ok");
+  } catch (e) {
+    say("customer-notice", "The service did not answer: " + e.message, "error");
+  } finally {
+    $("send").disabled = false;
+  }
+}
+
+async function reloadConversation() {
+  if (!conversationId) { say("customer-notice", "No conversation yet.", "error"); return; }
+  const r = await call(`/v1/conversations/${encodeURIComponent(conversationId)}`, customerHeaders());
+  if (!r.res.ok) { say("customer-notice", `${detail(r)}\n${meta(r.res, r.ms)}`, "error"); return; }
+  $("chat").replaceChildren();
+  for (const m of r.data.messages) addMessage(m.role, m.content);
+  setStatus(r.data.status);
+  say("customer-notice", "Conversation reloaded from the server. " + meta(r.res, r.ms), "ok");
+}
+
+function renderApproval(a) {
+  const box = el("div", null, "approval");
+  const action = a.actions[0] || { name: "?", args: {} };
+  box.append(el("div", `${a.customer_id} · ${new Date(a.requested_at).toLocaleString()}`, "muted"));
+  const args = el("div", null, "args");
+  args.append(el("strong", action.name + " "), el("code", JSON.stringify(action.args)));
+  box.append(args);
+  const note = el("input");
+  note.placeholder = "Note for the customer (optional, used when rejecting)";
+  note.maxLength = 500;
+  const approve = el("button", "Approve", "small primary");
+  const reject = el("button", "Reject", "small danger");
+  approve.type = reject.type = "button";
+  approve.addEventListener("click", () => decide(a.conversation_id, "approve", note.value, [approve, reject]));
+  reject.addEventListener("click", () => decide(a.conversation_id, "reject", note.value, [approve, reject]));
+  const row = el("div", null, "row");
+  row.append(approve, reject);
+  box.append(note, row);
+  return box;
+}
+
+async function refreshApprovals() {
+  $("refresh").disabled = true;
+  try {
+    const r = await call("/v1/admin/approvals", adminHeaders());
+    if (!r.res.ok) { say("admin-notice", `${detail(r)}\n${meta(r.res, r.ms)}`, "error"); return; }
+    const list = $("approvals");
+    list.replaceChildren();
+    if (r.data.length === 0) list.append(el("p", "Nothing is waiting for a decision.", "muted"));
+    for (const a of r.data) list.append(renderApproval(a));
+    say("admin-notice", `${r.data.length} pending · ${meta(r.res, r.ms)}`, "ok");
+  } catch (e) {
+    say("admin-notice", "The service did not answer: " + e.message, "error");
+  } finally {
+    $("refresh").disabled = false;
+  }
+}
+
+async function decide(id, decision, note, buttons) {
+  buttons.forEach((b) => { b.disabled = true; });
+  const body = { decision };
+  if (note.trim()) body.note = note.trim();
+  const r = await call(`/v1/admin/approvals/${encodeURIComponent(id)}`, adminHeaders(), body);
+  await refreshApprovals();
+  if (!r.res.ok) {
+    say("admin-notice", `${detail(r)}\n${meta(r.res, r.ms)}`, "error");
+    return;
+  }
+  const verb = decision === "approve" ? "Approved" : "Rejected";
+  say("admin-notice", `${verb}. The agent answered: ${r.data.reply}\n${meta(r.res, r.ms)}`, "ok");
+  if (id === conversationId) await reloadConversation();
+}
+
+async function checkHealth() {
+  const badge = $("health");
+  try {
+    const r = await call("/health/ready", {});
+    const ready = r.res.ok;
+    badge.className = "badge " + (ready ? "up" : "down");
+    badge.textContent = ready ? `ready · redis ${r.data.redis}` : "not ready";
+  } catch (_) {
+    badge.className = "badge down";
+    badge.textContent = "unreachable";
+  }
+}
+
+for (const text of EXAMPLES) {
+  const chip = el("button", text, "chip");
+  chip.type = "button";
+  chip.addEventListener("click", () => send(text));
+  $("examples").append(chip);
+}
+$("send").addEventListener("click", () => send());
+$("message").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
+$("new-conv").addEventListener("click", () => { resetChat(); say("customer-notice", "A new conversation starts with your next message."); });
+$("customer").addEventListener("change", () => { resetChat(); say("customer-notice", "Switched customer: new conversation."); });
+$("reload-conv").addEventListener("click", reloadConversation);
+$("refresh").addEventListener("click", refreshApprovals);
+$("health-btn").addEventListener("click", checkHealth);
+
+// Keys live only in this browser tab (sessionStorage), never in the page source.
+for (const id of ["gw-key", "admin-key"]) {
+  try { $(id).value = sessionStorage.getItem("supportpilot-" + id) || ""; } catch (_) { /* storage blocked: fine */ }
+  $(id).addEventListener("change", () => {
+    try { sessionStorage.setItem("supportpilot-" + id, $(id).value); } catch (_) { /* storage blocked: fine */ }
+  });
+}
+checkHealth();
+</script>
+</body>
+</html>

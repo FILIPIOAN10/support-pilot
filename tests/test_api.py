@@ -97,3 +97,12 @@ def test_readiness_survives_a_redis_outage_because_the_limiter_fails_open(client
     dead = redis.Redis.from_url("redis://127.0.0.1:1/0", socket_connect_timeout=0.2, socket_timeout=0.2)
     app.dependency_overrides[get_redis] = lambda: dead
     assert client.get("/health/ready").json() == {"status": "ready", "redis": "down"}
+
+
+def test_the_home_page_needs_no_key_and_is_safe_by_construction(client):
+    client.headers.pop("X-API-Key")
+    response = client.get("/")
+    assert response.status_code == 200 and response.headers["content-type"].startswith("text/html")
+    assert "SupportPilot" in response.text
+    assert "default-src 'none'" in response.headers["content-security-policy"]
+    assert "innerHTML" not in response.text  # replies are only ever rendered with textContent
