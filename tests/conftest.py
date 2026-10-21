@@ -13,7 +13,7 @@ from pymongo import MongoClient
 from supportpilot.agent import build_agent
 from supportpilot.config import Settings
 from supportpilot.fake import ScriptedSupportModel
-from supportpilot.resilience import ServiceUnavailable
+from supportpilot.resilience import Conflict, ServiceUnavailable
 from supportpilot.service import SupportService
 from supportpilot.store import Store
 from supportpilot.tools import build_tools
@@ -92,6 +92,8 @@ class FakeOrders:
             "1004": make_order("1004", "c-200"),
         }
         self.refunds = {}
+        self.contexts = []  # the customer / conversation / approver sent with each refund call
+        self.refuse = None  # set to a reason to make the order system answer 409
         self.down = False
 
     def get_order(self, order_id):
@@ -99,9 +101,12 @@ class FakeOrders:
             raise ServiceUnavailable("orders is unavailable")
         return self.orders.get(order_id)
 
-    def create_refund(self, order_id, reason, idempotency_key):
+    def create_refund(self, order_id, reason, idempotency_key, **context):
         if self.down:
             raise ServiceUnavailable("orders is unavailable")
+        if self.refuse:
+            raise Conflict(self.refuse)
+        self.contexts.append(context)
         if idempotency_key not in self.refunds:
             self.refunds[idempotency_key] = {"refund_id": f"RF-{len(self.refunds) + 1:04d}", "status": "pending"}
         return self.refunds[idempotency_key]

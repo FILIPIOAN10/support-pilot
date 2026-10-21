@@ -8,7 +8,7 @@ reale)** și **cum o spun**.
 Regula de onestitate: spun „construit și testat local”, nu „în producție”. Ce nu a rulat încă e marcat explicit.
 
 Pentru învățat: `docs/STUDIU.md` (fișa completă), `docs/STUDIU-SIMPLU.md` (15 minute), `docs/INTERVIU.md` (script de
-interviu, RO + EN), `docs/flashcards.html` (58 de cartonașe, inclusiv pachetele „Explică proiectul”; se deschide în browser). Le actualizez pe măsură ce avansez.
+interviu, RO + EN), `docs/flashcards.html` (72 de cartonașe, inclusiv pachetele „Explică proiectul” și „Demo cu pagina”; se deschide în browser). Le actualizez pe măsură ce avansez.
 
 ---
 

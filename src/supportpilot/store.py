@@ -97,3 +97,11 @@ class Store:
                 }
             },
         )
+
+    # --- erasure --------------------------------------------------------------------------------------------------
+    def conversation_ids(self, customer_id: str) -> list[str]:
+        return [c["_id"] for c in self.conversations.find({"customer_id": customer_id}, {"_id": 1})]
+
+    def delete_customer(self, customer_id: str) -> None:
+        self.approvals.delete_many({"customer_id": customer_id})
+        self.conversations.delete_many({"customer_id": customer_id})

@@ -19,13 +19,26 @@ class OrdersClient:
         except NotFound:
             return None
 
-    def create_refund(self, order_id: str, reason: str, idempotency_key: str) -> dict[str, Any]:
-        """Safe to retry (and to call twice): the same key returns the same refund instead of creating a second one."""
+    def create_refund(
+        self,
+        order_id: str,
+        reason: str,
+        idempotency_key: str,
+        *,
+        customer_id: str | None = None,
+        conversation_id: str | None = None,
+        approved_by: str | None = None,
+    ) -> dict[str, Any]:
+        """Safe to retry (and to call twice): the same key returns the same refund instead of creating a second one.
+
+        The context headers let the order system re-check ownership itself and record who approved the refund.
+        Raises Conflict when the order system refuses (not delivered, outside the window, a return already open)."""
+        context = {"X-Customer-Id": customer_id, "X-Conversation-Id": conversation_id, "X-Approved-By": approved_by}
         return self._http.request(
             "POST",
             f"/orders/{order_id}/refunds",
             json={"reason": reason},
-            headers={"Idempotency-Key": idempotency_key},
+            headers={"Idempotency-Key": idempotency_key} | {k: v for k, v in context.items() if v},
         )
 
 

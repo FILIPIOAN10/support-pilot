@@ -171,6 +171,18 @@ def decide(conversation_id: str, body: DecisionIn, admin: Admin, service: Servic
     )
 
 
+@router.delete(
+    "/admin/customers/{customer_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["admin"],
+)
+def erase_customer(customer_id: str, _: Admin, service: Service) -> None:
+    """GDPR erasure, called by the shop after it erased the account. 204 whether or not anything was left."""
+    if not CUSTOMER_ID.match(customer_id):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid customer id")
+    service.erase_customer(customer_id)
+
+
 @health.get("/live")
 def live() -> dict[str, str]:
     return {"status": "up"}

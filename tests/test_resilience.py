@@ -3,6 +3,7 @@ import pytest
 
 from supportpilot.resilience import (
     CircuitBreaker,
+    Conflict,
     NotFound,
     ResilientHttp,
     ServiceUnavailable,
@@ -122,3 +123,17 @@ def test_when_the_breaker_is_open_the_service_is_not_called_at_all():
     with pytest.raises(ServiceUnavailable, match="temporarily"):
         client.request("GET", "/x")
     assert len(calls) == 2  # failed fast: no third call
+
+
+def test_409_is_a_refusal_with_its_reason_never_retried_and_never_trips_the_breaker():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(409, json={"detail": "Returns can only be requested for delivered orders"})
+
+    client = http(handler, retries=3)
+    for _ in range(10):
+        with pytest.raises(Conflict, match="delivered orders"):
+            client.request("POST", "/x")
+    assert len(calls) == 10 and client.breaker.state == "closed"

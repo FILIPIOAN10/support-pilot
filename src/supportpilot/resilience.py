@@ -30,6 +30,11 @@ class NotFound(Exception):
     """The dependency answered 404: a business answer, not a failure (never retried, never trips the breaker)."""
 
 
+class Conflict(Exception):
+    """The dependency answered 409: it understood and said no ("this order cannot be returned"). A business answer
+    like 404 - never retried, never trips the breaker. The message is the dependency's reason, safe to show."""
+
+
 class Transient(Exception):
     """A response that is worth retrying: 5xx and 429."""
 
@@ -116,8 +121,8 @@ class ResilientHttp:
             raise ServiceUnavailable(f"{self.name} is temporarily unavailable")
         try:
             result = self._with_retries(method, path, **kwargs)
-        except NotFound:
-            self.breaker.record_success()  # the service is fine, it just has no such thing
+        except (NotFound, Conflict):
+            self.breaker.record_success()  # the service is fine, it just said "no such thing" / "no"
             raise
         except (Transient, httpx.TransportError) as e:
             self.breaker.record_failure()
@@ -143,6 +148,8 @@ class ResilientHttp:
                 response = self._client.request(method, path, **kwargs)
                 if response.status_code == 404:
                     raise NotFound(path)
+                if response.status_code == 409:
+                    raise Conflict(_detail(response))
                 if response.status_code >= 500 or response.status_code == 429:
                     raise Transient(f"{response.status_code}")
                 response.raise_for_status()  # other 4xx: our bug (bad key, bad request) - not retryable
@@ -150,3 +157,12 @@ class ResilientHttp:
 
     def close(self) -> None:
         self._client.close()
+
+
+def _detail(response: httpx.Response) -> str:
+    """FastAPI and the shop's internal API both answer {"detail": "..."}; anything else gets a generic reason."""
+    try:
+        detail = response.json().get("detail")
+    except ValueError:
+        detail = None
+    return str(detail)[:300] if detail else "the request was refused"

@@ -84,3 +84,17 @@ def test_when_a_service_is_down_the_model_gets_a_clear_message_not_an_exception(
         ("search_policies", {"question": "returns?"}),
     ]:
         assert "unavailable" in run(tools, name, args)
+
+
+def test_request_refund_tells_the_order_system_who_and_which_conversation(tools, orders):
+    config = {"configurable": {"customer_id": "c-100", "thread_id": "conv-9", "approved_by": "maria"}}
+    tool = next(t for t in tools if t.name == "request_refund")
+    tool.invoke({"order_id": "1001", "reason": "too small"}, config=config)
+    assert orders.contexts == [{"customer_id": "c-100", "conversation_id": "conv-9", "approved_by": "maria"}]
+
+
+def test_when_the_order_system_refuses_the_customer_hears_why_not_unavailable(tools, orders):
+    orders.refuse = "A return request for this order has already been approved"
+    out = run(tools, "request_refund", {"order_id": "1001", "reason": "x"})
+    assert out.startswith("Order 1001 cannot be refunded:") and "already been approved" in out
+    assert orders.refunds == {}
