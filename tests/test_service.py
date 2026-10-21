@@ -104,3 +104,24 @@ def test_a_failed_resume_puts_the_approval_back_so_it_can_be_retried(make_servic
     assert store.approvals.find_one()["status"] == "pending"  # not stuck in "deciding"
     good = service.decide(out.conversation_id, "approve", None, "maria")
     assert "RF-" in good.reply
+
+
+def test_the_approving_admin_reaches_the_order_system(make_service, orders):
+    service, _ = make_service()
+    out = service.chat("c-100", "I want a refund for order 1001")
+    service.decide(out.conversation_id, "approve", None, "maria")
+    assert orders.contexts == [{"customer_id": "c-100", "conversation_id": out.conversation_id, "approved_by": "maria"}]
+
+
+def test_erasing_a_customer_removes_transcripts_records_and_approvals_and_nobody_elses(make_service, mongo):
+    service, store = make_service()
+    mine = service.chat("c-100", "I want a refund for order 1001")  # paused: an approval exists too
+    theirs = service.chat("c-200", "Where is my order 1004?")
+
+    assert service.erase_customer("c-100") == 1
+    assert store.get_conversation(mine.conversation_id) is None
+    assert store.pending_approvals() == []
+    assert mongo["checkpoints"].count_documents({"thread_id": mine.conversation_id}) == 0
+    assert mongo["checkpoints"].count_documents({"thread_id": theirs.conversation_id}) > 0
+    assert service.messages(theirs.conversation_id, "c-200")[1]
+    assert service.erase_customer("c-100") == 0  # idempotent

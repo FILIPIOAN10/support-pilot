@@ -13,7 +13,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 
 from supportpilot.clients import DocuAskClient, OrdersClient
-from supportpilot.resilience import ServiceUnavailable
+from supportpilot.resilience import Conflict, ServiceUnavailable
 
 REFUND_WINDOW_DAYS = 30
 UNAVAILABLE = "The system is unavailable right now. Tell the customer to try again in a few minutes."
@@ -98,8 +98,18 @@ def build_tools(orders: OrdersClient, docuask: DocuAskClient, now=lambda: dateti
             if order is None or not _eligibility(order, now())[0]:
                 return f"Order {order_id} cannot be refunded."  # re-checked: the state may have changed while waiting
             # one refund per order per conversation, even if the approval is submitted twice
-            key = f"{config['configurable']['thread_id']}:{order['id']}"
-            refund = orders.create_refund(order["id"], reason[:500], key)
+            thread_id = config["configurable"]["thread_id"]
+            key = f"{thread_id}:{order['id']}"
+            refund = orders.create_refund(
+                order["id"],
+                reason[:500],
+                key,
+                customer_id=_customer(config),
+                conversation_id=thread_id,
+                approved_by=config["configurable"].get("approved_by"),
+            )
+        except Conflict as e:  # the order system has the final word on money
+            return f"Order {order_id} cannot be refunded: {e}."
         except ServiceUnavailable:
             return UNAVAILABLE
         return json.dumps({"refund_id": refund["refund_id"], "status": refund["status"]})

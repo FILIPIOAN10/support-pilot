@@ -98,13 +98,11 @@ class SupportService:
                     }
                 ]
             }
+        config = self._config(conversation_id, customer_id)
+        config["configurable"]["approved_by"] = admin  # read by request_refund, recorded by the order system
         try:
             with get_usage_metadata_callback() as usage:
-                result = self._agent.invoke(
-                    Command(resume=resume),
-                    self._config(conversation_id, customer_id),
-                    version="v2",
-                )
+                result = self._agent.invoke(Command(resume=resume), config, version="v2")
         except Exception:
             self._store.release_approval(conversation_id)  # so the decision can be retried instead of being stuck
             raise
@@ -139,3 +137,13 @@ class SupportService:
             elif isinstance(m, AIMessage) and text:  # tool calls and tool results are internal
                 visible.append({"role": "assistant", "content": text})
         return conversation["status"], visible
+
+    def erase_customer(self, customer_id: str) -> int:
+        """GDPR Art. 17: every conversation of this customer - the agent's checkpoints (the transcript itself),
+        the conversation records and the approvals. Idempotent: erasing an erased customer erases nothing."""
+        conversation_ids = self._store.conversation_ids(customer_id)
+        for conversation_id in conversation_ids:
+            self._agent.checkpointer.delete_thread(conversation_id)
+        self._store.delete_customer(customer_id)
+        log.info("erased customer=%s conversations=%d", customer_id, len(conversation_ids))
+        return len(conversation_ids)

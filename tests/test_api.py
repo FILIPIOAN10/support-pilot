@@ -106,3 +106,12 @@ def test_the_home_page_needs_no_key_and_is_safe_by_construction(client):
     assert "SupportPilot" in response.text
     assert "default-src 'none'" in response.headers["content-security-policy"]
     assert "innerHTML" not in response.text  # replies are only ever rendered with textContent
+
+
+def test_the_shop_can_erase_a_customer_with_the_admin_key_only(client):
+    cid = client.post("/v1/chat", json={"message": "Where is my order 1002?"}).json()["conversation_id"]
+    assert client.delete("/v1/admin/customers/c-100").status_code == 401  # the gateway key is not enough
+    assert client.delete("/v1/admin/customers/..%2Fx", headers=ADMIN).status_code in (400, 404)
+    assert client.delete("/v1/admin/customers/c-100", headers=ADMIN).status_code == 204
+    assert client.get(f"/v1/conversations/{cid}").status_code == 404
+    assert client.delete("/v1/admin/customers/c-100", headers=ADMIN).status_code == 204  # idempotent
