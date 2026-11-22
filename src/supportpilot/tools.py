@@ -16,6 +16,7 @@ from supportpilot.clients import DocuAskClient, OrdersClient
 from supportpilot.resilience import Conflict, ServiceUnavailable
 
 REFUND_WINDOW_DAYS = 30
+HANDOFF_TOOL = "handoff_to_human"
 UNAVAILABLE = "The system is unavailable right now. Tell the customer to try again in a few minutes."
 
 
@@ -114,4 +115,11 @@ def build_tools(orders: OrdersClient, docuask: DocuAskClient, now=lambda: dateti
             return UNAVAILABLE
         return json.dumps({"refund_id": refund["refund_id"], "status": refund["status"]})
 
-    return [get_order, search_policies, check_refund_eligibility, request_refund]
+    @tool(HANDOFF_TOOL)
+    def handoff_to_human(reason: str) -> str:
+        """Pass the conversation to a human colleague. Use it when the customer asks for a person, or when you
+        cannot help (the policies do not cover the question, the customer is unhappy with the answer)."""
+        # the effect happens in the service, after the run: the conversation is marked and queued for the support team
+        return f"A colleague will take over this conversation. Reason noted: {reason[:300]}"
+
+    return [get_order, search_policies, check_refund_eligibility, request_refund, handoff_to_human]

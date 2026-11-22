@@ -43,6 +43,7 @@ def test_a_real_chat_client_drives_the_agent_through_a_tool_call(server, tools, 
         "search_policies",
         "check_refund_eligibility",
         "request_refund",
+        "handoff_to_human",
     }
     assert list(schemas["get_order"]["properties"]) == ["order_id"]  # the model is never offered customer_id or config
     assert [m["role"] for m in second["messages"]][-2:] == [

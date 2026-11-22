@@ -24,11 +24,14 @@ class Store:
     def __init__(self, db: Database):
         self.conversations = db["conversations"]
         self.approvals = db["approvals"]
+        self.handoffs = db["handoffs"]
 
     def ensure_indexes(self) -> None:
         self.conversations.create_index([("customer_id", 1), ("updated_at", DESCENDING)])
         self.approvals.create_index([("status", 1), ("requested_at", 1)])
         self.approvals.create_index("conversation_id")
+        self.handoffs.create_index([("status", 1), ("requested_at", 1)])
+        self.handoffs.create_index("conversation_id")
 
     # --- conversations -------------------------------------------------------------------------------------------
     def new_conversation(self, customer_id: str) -> str:
@@ -98,10 +101,34 @@ class Store:
             },
         )
 
+    # --- handoffs: conversations the agent passed to a person ------------------------------------------------------
+    def open_handoff(self, conversation_id: str, customer_id: str, reason: str) -> None:
+        self.handoffs.insert_one(
+            {
+                "conversation_id": conversation_id,
+                "customer_id": customer_id,
+                "reason": reason,
+                "status": "pending",
+                "requested_at": _now(),
+            }
+        )
+
+    def pending_handoffs(self) -> list[dict[str, Any]]:
+        return list(self.handoffs.find({"status": "pending"}).sort("requested_at", 1))
+
+    def claim_handoff(self, conversation_id: str, admin: str) -> dict[str, Any] | None:
+        """Atomic like claim_approval: two colleagues answering at once, only one reply goes out."""
+        return self.handoffs.find_one_and_update(
+            {"conversation_id": conversation_id, "status": "pending"},
+            {"$set": {"status": "answered", "answered_by": admin, "answered_at": _now()}},
+            return_document=ReturnDocument.AFTER,
+        )
+
     # --- erasure --------------------------------------------------------------------------------------------------
     def conversation_ids(self, customer_id: str) -> list[str]:
         return [c["_id"] for c in self.conversations.find({"customer_id": customer_id}, {"_id": 1})]
 
     def delete_customer(self, customer_id: str) -> None:
         self.approvals.delete_many({"customer_id": customer_id})
+        self.handoffs.delete_many({"customer_id": customer_id})
         self.conversations.delete_many({"customer_id": customer_id})
