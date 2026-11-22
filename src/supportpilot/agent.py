@@ -10,6 +10,7 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import (
     HumanInTheLoopMiddleware,
     ModelCallLimitMiddleware,
+    ModelFallbackMiddleware,
     PIIMiddleware,
     ToolCallLimitMiddleware,
 )
@@ -33,18 +34,23 @@ Rules.
 - Be brief and polite. Answer in the customer's language."""
 
 
-def build_agent(model: BaseChatModel, tools: list[BaseTool], checkpointer, settings: Settings):
-    return create_agent(
-        model,
-        tools,
-        system_prompt=SYSTEM_PROMPT,
-        middleware=[
-            # emails never reach the model provider (data minimisation - the customers are in the EU)
-            PIIMiddleware("email", strategy="redact"),
-            ModelCallLimitMiddleware(run_limit=settings.max_model_calls, exit_behavior="end"),
-            ToolCallLimitMiddleware(run_limit=settings.max_tool_calls, exit_behavior="end"),
-            # the only tool with a side effect waits for a person; the graph pauses and its state is saved
-            HumanInTheLoopMiddleware(interrupt_on={"request_refund": {"allowed_decisions": ["approve", "reject"]}}),
-        ],
-        checkpointer=checkpointer,
-    )
+def build_agent(
+    model: BaseChatModel,
+    tools: list[BaseTool],
+    checkpointer,
+    settings: Settings,
+    fallback: BaseChatModel | None = None,
+):
+    middleware = [
+        # emails never reach the model provider (data minimisation - the customers are in the EU)
+        PIIMiddleware("email", strategy="redact"),
+        ModelCallLimitMiddleware(run_limit=settings.max_model_calls, exit_behavior="end"),
+        ToolCallLimitMiddleware(run_limit=settings.max_tool_calls, exit_behavior="end"),
+        # the only tool with a side effect waits for a person; the graph pauses and its state is saved
+        HumanInTheLoopMiddleware(interrupt_on={"request_refund": {"allowed_decisions": ["approve", "reject"]}}),
+    ]
+    if fallback is not None:
+        # a failed model call (provider outage, 5xx after its own retries, timeout) is repeated on the fallback model;
+        # the tools, limits and the approval gate stay exactly the same
+        middleware.append(ModelFallbackMiddleware(fallback))
+    return create_agent(model, tools, system_prompt=SYSTEM_PROMPT, middleware=middleware, checkpointer=checkpointer)

@@ -54,6 +54,7 @@
   .msg { max-width: 85%; padding: 8px 12px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .msg.customer { align-self: flex-end; background: var(--me); }
   .msg.assistant { align-self: flex-start; background: var(--bot); }
+  .msg.tool { align-self: flex-start; padding: 2px 12px; font-size: .8rem; color: var(--muted); font-family: ui-monospace, monospace; }
   .empty { color: var(--muted); font-size: .9rem; margin: auto; text-align: center; }
   .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: .8rem; font-weight: 600; border: 1px solid currentColor; }
   .badge.open { color: var(--ok); }
@@ -228,22 +229,65 @@ function resetChat() {
   setStatus(null);
 }
 
+// Reads the Server-Sent Events of /v1/chat/stream: "start", then "tool" and "token" while the agent works,
+// then "done" (the same fields as /v1/chat) or "error".
+async function readEvents(res, onEvent) {
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buffer += value;
+    let end;
+    while ((end = buffer.indexOf("\n\n")) >= 0) {
+      const block = buffer.slice(0, end);
+      buffer = buffer.slice(end + 2);
+      const fields = Object.fromEntries(block.split("\n").map((line) => [line.slice(0, line.indexOf(": ")), line.slice(line.indexOf(": ") + 2)]));
+      onEvent(fields.event, JSON.parse(fields.data));
+    }
+  }
+}
+
 async function send(text) {
   const message = (text || $("message").value).trim();
   if (!message) { say("customer-notice", "Write a message first.", "error"); return; }
   $("send").disabled = true;
+  const started = performance.now();
   try {
     const body = { message };
     if (conversationId) body.conversation_id = conversationId;
-    const r = await call("/v1/chat", customerHeaders(), body);
-    if (!r.res.ok) { say("customer-notice", `${detail(r)}\n${meta(r.res, r.ms)}`, "error"); return; }
+    const res = await fetch("/v1/chat/stream", {
+      method: "POST",
+      headers: { ...customerHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {  // 401 / 404 / 409 / 422 / 429 arrive before any event, as normal JSON errors
+      let data = null;
+      try { data = await res.json(); } catch (_) { /* empty body */ }
+      say("customer-notice", `${detail({ res, data })}\n${meta(res, Math.round(performance.now() - started))}`, "error");
+      return;
+    }
     addMessage("customer", message);
-    addMessage("assistant", r.data.reply);
-    conversationId = r.data.conversation_id;
-    setStatus(r.data.status);
     $("message").value = "";
-    const extra = r.data.status === "awaiting_approval" ? "\nThe refund is waiting: decide it in the Support colleague panel." : "";
-    say("customer-notice", meta(r.res, r.ms) + extra, r.data.status === "awaiting_approval" ? "" : "ok");
+    addMessage("assistant", "…");
+    const bubble = $("chat").lastElementChild;
+    let written = "";
+    await readEvents(res, (event, data) => {
+      if (event === "start") conversationId = data.conversation_id;
+      if (event === "tool") {  // a step of the agent, shown above the reply as it happens
+        bubble.before(el("div", `→ ${data.name}(${JSON.stringify(data.args)})`, "msg tool"));
+      }
+      if (event === "token") { written += data.text; bubble.textContent = written; }
+      if (event === "done") {
+        bubble.textContent = data.reply;  // the final word: the saved reply, or "sent for approval"
+        conversationId = data.conversation_id;
+        setStatus(data.status);
+        const extra = data.status === "awaiting_approval" ? "\nThe refund is waiting: decide it in the Support colleague panel." : "";
+        say("customer-notice", meta(res, Math.round(performance.now() - started)) + extra, data.status === "awaiting_approval" ? "" : "ok");
+      }
+      if (event === "error") { bubble.textContent = "Something went wrong."; say("customer-notice", data.detail, "error"); }
+      $("chat").scrollTop = $("chat").scrollHeight;
+    });
   } catch (e) {
     say("customer-notice", "The service did not answer: " + e.message, "error");
   } finally {
