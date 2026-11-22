@@ -20,7 +20,8 @@ customer  ->  POST /v1/chat  (gateway key + X-Customer-Id, rate-limited in Redis
 ```
 
 Stack: Python 3.12, FastAPI, LangChain `create_agent` on LangGraph, MongoDB (`MongoDBSaver` checkpoints), Redis,
-httpx + tenacity, `uv`, Docker, GitHub Actions. Policy questions go to my RAG service
+httpx + tenacity, OpenTelemetry (Phoenix locally), `uv`, Docker, GitHub Actions. Models: OpenAI, Azure
+OpenAI or AWS Bedrock (Converse API), with an optional fallback provider. Policy questions go to my RAG service
 [DocuAsk](https://github.com/FILIPIOAN10/docu-ask).
 
 ## Run it (no API key needed)
@@ -70,6 +71,7 @@ uv run python -m evals.run             # evaluation (scripted model; LLM_PROVIDE
 | Method | Path | Who | What |
 |---|---|---|---|
 | POST | `/v1/chat` | customer | message in, reply out; `status` is `open` or `awaiting_approval` |
+| POST | `/v1/chat/stream` | customer | the same, as Server-Sent Events: `start`, then `tool` / `token` while the agent works, then `done` (same fields) or `error` |
 | GET | `/v1/conversations/{id}` | customer | the visible messages (tool calls stay internal) |
 | GET | `/v1/admin/approvals` | support agent | refunds waiting for a decision, with the exact tool arguments |
 | POST | `/v1/admin/approvals/{conversation_id}` | support agent | `{"decision": "approve" \| "reject", "note": "..."}` resumes the paused agent |
@@ -153,7 +155,6 @@ the wrong port and was reported unhealthy.
 - Identity is a trusted-gateway header; production would verify a signed token (JWT / OIDC).
 - The default keys (`dev-gateway-key`, `dev-admin-key`) are public placeholders and nothing rejects them at startup.
 - One gated action per pause: a second refund in the same turn is not handled specially.
-- No streaming of the agent's reply; no distributed tracing (logs carry a request id).
 - Fixed-window rate limit (allows a burst at the window boundary).
 - The real-model evaluation is small and single-run.
 

@@ -1,3 +1,5 @@
+import json
+
 import pytest
 import redis
 from fastapi.testclient import TestClient
@@ -115,3 +117,38 @@ def test_the_shop_can_erase_a_customer_with_the_admin_key_only(client):
     assert client.delete("/v1/admin/customers/c-100", headers=ADMIN).status_code == 204
     assert client.get(f"/v1/conversations/{cid}").status_code == 404
     assert client.delete("/v1/admin/customers/c-100", headers=ADMIN).status_code == 204  # idempotent
+
+
+def events_of(response) -> list[tuple[str, dict]]:
+    """Parse a Server-Sent Events body into (event, data) pairs."""
+    events = []
+    for block in response.text.strip().split("\n\n"):
+        lines = dict(line.split(": ", 1) for line in block.splitlines())
+        events.append((lines["event"], json.loads(lines["data"])))
+    return events
+
+
+def test_a_streamed_answer_shows_the_tool_then_the_text_then_the_outcome(client):
+    response = client.post("/v1/chat/stream", json={"message": "Where is my order 1002?"})
+    assert response.status_code == 200 and response.headers["content-type"].startswith("text/event-stream")
+    events = events_of(response)
+    names = [name for name, _ in events]
+    assert names[0] == "start" and names[-1] == "done"
+    assert ("tool", {"name": "get_order", "args": {"order_id": "1002"}}) in events
+    assert names.index("tool") < names.index("token")  # the page sees the lookup before the answer
+    done = events[-1][1]
+    assert done["status"] == "open" and "shipped" in done["reply"]
+    convo = client.get(f"/v1/conversations/{done['conversation_id']}").json()  # saved like a normal turn
+    assert [m["role"] for m in convo["messages"]] == ["customer", "assistant"]
+
+
+def test_a_streamed_refund_ends_waiting_for_a_human(client):
+    events = events_of(client.post("/v1/chat/stream", json={"message": "I want a refund for order 1001"}))
+    tools = [data["name"] for name, data in events if name == "tool"]
+    assert tools == ["check_refund_eligibility", "request_refund"]
+    done = events[-1][1]
+    assert events[-1][0] == "done" and done["status"] == "awaiting_approval"
+    pending = client.get("/v1/admin/approvals", headers=ADMIN).json()
+    assert pending[0]["conversation_id"] == done["conversation_id"]
+    paused = client.post("/v1/chat/stream", json={"message": "and?", "conversation_id": done["conversation_id"]})
+    assert paused.status_code == 409  # checked before the stream starts: a real status code, not a broken stream

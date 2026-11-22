@@ -1,12 +1,16 @@
 """HTTP layer. Thin: authenticate, rate-limit, validate, call the service, translate exceptions to status codes."""
 
 import hmac
+import json
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Any
 
 import redis
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi.responses import StreamingResponse
 from langgraph.checkpoint.mongodb import MongoDBSaver
 from pymongo import MongoClient
 
@@ -102,14 +106,10 @@ router = APIRouter(prefix="/v1")
 health = APIRouter(prefix="/health", tags=["health"])
 
 
-@router.post("/chat", response_model=ChatOut, tags=["chat"])
-def chat(
-    body: ChatIn,
-    customer: Customer,
-    service: Service,
-    limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
-    response: Response,
-) -> ChatOut:
+Limiter = Annotated[RateLimiter, Depends(get_rate_limiter)]
+
+
+def _rate_limit(limiter: RateLimiter, customer: str) -> None:
     allowed, retry_after = limiter.hit(customer)
     if not allowed:
         raise HTTPException(
@@ -117,8 +117,12 @@ def chat(
             "Too many messages, slow down",
             headers={"Retry-After": str(retry_after)},
         )
+
+
+@contextmanager
+def _conversation_errors() -> Iterator[None]:
     try:
-        outcome = service.chat(customer, body.message, body.conversation_id)
+        yield
     except ConversationNotFound as e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such conversation") from e
     except ApprovalPending as e:
@@ -126,6 +130,13 @@ def chat(
             status.HTTP_409_CONFLICT,
             "A human is reviewing the last request; wait for the result",
         ) from e
+
+
+@router.post("/chat", response_model=ChatOut, tags=["chat"])
+def chat(body: ChatIn, customer: Customer, service: Service, limiter: Limiter, response: Response) -> ChatOut:
+    _rate_limit(limiter, customer)
+    with _conversation_errors():
+        outcome = service.chat(customer, body.message, body.conversation_id)
     return ChatOut(
         conversation_id=outcome.conversation_id,
         status=outcome.status,
@@ -133,12 +144,30 @@ def chat(
     )
 
 
+def _sse(events: Iterator[dict[str, Any]]) -> Iterator[str]:
+    """Server-Sent Events: plain text over one HTTP response, one `event:` + `data:` block per event."""
+    for e in events:
+        yield f"event: {e['event']}\ndata: {json.dumps(e['data'], ensure_ascii=False)}\n\n"
+
+
+@router.post("/chat/stream", tags=["chat"], response_class=StreamingResponse)
+def chat_stream(body: ChatIn, customer: Customer, service: Service, limiter: Limiter) -> StreamingResponse:
+    """Same as /chat, streamed: `start`, then `tool` / `token` events while the agent works, then `done`
+    (the same fields as ChatOut) or `error`. Auth, rate limit, 404 and 409 happen before the stream starts."""
+    _rate_limit(limiter, customer)
+    with _conversation_errors():
+        events = service.chat_stream(customer, body.message, body.conversation_id)
+    return StreamingResponse(
+        _sse(events),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},  # no proxy may hold the events back
+    )
+
+
 @router.get("/conversations/{conversation_id}", response_model=ConversationOut, tags=["chat"])
 def conversation(conversation_id: str, customer: Customer, service: Service) -> ConversationOut:
-    try:
+    with _conversation_errors():
         state, messages = service.messages(conversation_id, customer)
-    except ConversationNotFound as e:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such conversation") from e
     return ConversationOut(
         conversation_id=conversation_id,
         status=state,
