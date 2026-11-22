@@ -13,7 +13,7 @@ from pymongo import MongoClient
 from supportpilot.agent import build_agent
 from supportpilot.clients import make_docuask_client, make_orders_client
 from supportpilot.config import Settings, get_settings
-from supportpilot.llm import make_chat_model
+from supportpilot.llm import make_chat_model, make_fallback_model
 from supportpilot.ratelimit import RateLimiter
 from supportpilot.schemas import (
     ApprovalOut,
@@ -59,7 +59,8 @@ def get_service() -> SupportService:
     s = get_settings()
     saver = MongoDBSaver(get_mongo(), db_name=s.mongo_db)
     tools = build_tools(make_orders_client(s), make_docuask_client(s))
-    return SupportService(build_agent(make_chat_model(s), tools, saver, s), get_store())
+    agent = build_agent(make_chat_model(s), tools, saver, s, fallback=make_fallback_model(s))
+    return SupportService(agent, get_store())
 
 
 @lru_cache
