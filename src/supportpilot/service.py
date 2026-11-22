@@ -7,6 +7,7 @@ from typing import Any
 from langchain_core.callbacks import get_usage_metadata_callback
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.types import Command
+from openinference.instrumentation import using_attributes
 
 from supportpilot.store import Store
 
@@ -74,7 +75,8 @@ class SupportService:
                 raise ConversationNotFound(conversation_id)
             if conversation["status"] == "awaiting_approval":
                 raise ApprovalPending(conversation_id)
-        with get_usage_metadata_callback() as usage:
+        # session = the conversation: the tracing UI groups every turn of one conversation together
+        with get_usage_metadata_callback() as usage, using_attributes(session_id=conversation_id, user_id=customer_id):
             result = self._agent.invoke(
                 {"messages": [HumanMessage(message)]},
                 self._config(conversation_id, customer_id),
@@ -101,7 +103,10 @@ class SupportService:
         config = self._config(conversation_id, customer_id)
         config["configurable"]["approved_by"] = admin  # read by request_refund, recorded by the order system
         try:
-            with get_usage_metadata_callback() as usage:
+            with (
+                get_usage_metadata_callback() as usage,
+                using_attributes(session_id=conversation_id, user_id=customer_id, metadata={"approved_by": admin}),
+            ):
                 result = self._agent.invoke(Command(resume=resume), config, version="v2")
         except Exception:
             self._store.release_approval(conversation_id)  # so the decision can be retried instead of being stuck

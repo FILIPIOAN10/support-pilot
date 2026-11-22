@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from supportpilot.api import get_service, get_store, health, router
 from supportpilot.config import get_settings
+from supportpilot.tracing import setup_tracing, shutdown_tracing
 
 request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 
@@ -36,10 +37,12 @@ log = logging.getLogger("supportpilot")
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Fail fast: build the agent now, so a missing key or an unreachable MongoDB stops the pod at start."""
     settings = get_settings()
+    tracer = setup_tracing(settings)
     get_store()
     get_service()
-    log.info("started provider=%s", settings.llm_provider)
+    log.info("started provider=%s fallback=%s", settings.llm_provider, settings.fallback_provider)
     yield
+    shutdown_tracing(tracer)
 
 
 app = FastAPI(title="SupportPilot", version="0.1.0", lifespan=lifespan)
