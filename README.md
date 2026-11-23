@@ -88,6 +88,12 @@ Customer routes need `X-API-Key` (the shop's gateway) and `X-Customer-Id`; admin
 - **The model never knows who the customer is.** `customer_id` comes from the authenticated request into the run
   configuration; tools read it from there. The model is only offered `order_id` (checked on the schema the OpenAI API
   actually receives). A tricked model still cannot read or refund another customer's order.
+- **Not every message needs an agent.** In front of the agent sits an explicit LangGraph workflow
+  (`START -> triage -> agent | answer_directly -> END`, `src/supportpilot/triage.py`). Triage is plain code: a
+  greeting or an obviously off-topic request ("tell me a joke") gets a fixed answer with 0 model calls and 0 tokens;
+  anything with a support signal, and anything the rules are unsure about, goes to the agent - so the rules can only
+  save cost, never block a real question. The agent loop runs as a subgraph and inherits the outer checkpointer, so the
+  approval pause, restart and resume work unchanged.
 - **Rules live in the tools, not in the prompt.** Ownership and the 30-day window are re-checked inside
   `request_refund`, after the human approved. Prompts persuade; code enforces.
 - **Human in the loop = a LangGraph interrupt.** The graph pauses, its state is saved in MongoDB, and an admin's decision

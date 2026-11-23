@@ -10,6 +10,7 @@ from pydantic import Field
 
 from supportpilot.agent import build_agent
 from supportpilot.fake import ScriptedSupportModel, _call
+from supportpilot.triage import messages_of
 
 
 def make(model, tools, settings):
@@ -20,12 +21,20 @@ def cfg(thread="t1", customer="c-100"):
     return {"configurable": {"thread_id": thread, "customer_id": customer}}
 
 
+class Said:
+    """A run's result plus every message it produced (including those still inside a paused agent)."""
+
+    def __init__(self, result, messages):
+        self.value, self.interrupts, self.messages = result.value, result.interrupts, messages
+
+
 def say(agent, text, **kw):
-    return agent.invoke({"messages": [HumanMessage(text)]}, cfg(**kw), version="v2")
+    result = agent.invoke({"messages": [HumanMessage(text)]}, cfg(**kw), version="v2")
+    return Said(result, messages_of(agent, cfg(**kw), result))
 
 
-def called(result_or_state) -> list[str]:
-    messages = result_or_state.value["messages"] if hasattr(result_or_state, "value") else result_or_state
+def called(said) -> list[str]:
+    messages = said.messages if isinstance(said, Said) else said.value["messages"]
     return [tc["name"] for m in messages if isinstance(m, AIMessage) for tc in m.tool_calls]
 
 
