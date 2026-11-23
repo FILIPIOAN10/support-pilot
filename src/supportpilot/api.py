@@ -17,7 +17,8 @@ from pymongo import MongoClient
 from supportpilot.agent import build_agent
 from supportpilot.clients import make_docuask_client, make_orders_client
 from supportpilot.config import Settings, get_settings
-from supportpilot.llm import make_chat_model, make_fallback_model
+from supportpilot.drafting import ReplyDrafter
+from supportpilot.llm import make_chat_model, make_draft_model, make_fallback_model
 from supportpilot.ratelimit import RateLimiter
 from supportpilot.schemas import (
     ApprovalOut,
@@ -26,6 +27,7 @@ from supportpilot.schemas import (
     ColleagueReplyIn,
     ConversationOut,
     DecisionIn,
+    DraftOut,
     HandoffOut,
     MessageOut,
 )
@@ -65,9 +67,10 @@ def get_store() -> Store:
 def get_service() -> SupportService:
     s = get_settings()
     saver = MongoDBSaver(get_mongo(), db_name=s.mongo_db)
-    tools = build_tools(make_orders_client(s), make_docuask_client(s))
+    docuask = make_docuask_client(s)
+    tools = build_tools(make_orders_client(s), docuask)
     agent = build_agent(make_chat_model(s), tools, saver, s, fallback=make_fallback_model(s))
-    return SupportService(agent, get_store())
+    return SupportService(agent, get_store(), ReplyDrafter(make_draft_model(s), docuask))
 
 
 @lru_cache
@@ -223,6 +226,16 @@ def reply_to_handoff(conversation_id: str, body: ColleagueReplyIn, admin: Admin,
     except NothingToApprove as e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Nobody is waiting for a colleague there") from e
     return ChatOut(conversation_id=outcome.conversation_id, status=outcome.status, reply=outcome.reply)
+
+
+@router.post("/admin/handoffs/{conversation_id}/draft", response_model=DraftOut, tags=["admin"])
+def draft_for_handoff(conversation_id: str, admin: Admin, service: Service) -> DraftOut:
+    """An AI-suggested reply built from the conversation and the shop's policies. Sends nothing to the customer."""
+    try:
+        draft = service.draft_for_colleague(conversation_id, admin)
+    except NothingToApprove as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Nobody is waiting for a colleague there") from e
+    return DraftOut(draft=draft.text, sources=draft.sources, usage=draft.usage)
 
 
 @router.delete(

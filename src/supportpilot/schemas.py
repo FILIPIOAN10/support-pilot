@@ -63,6 +63,14 @@ class ColleagueReplyIn(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
 
 
+class DraftOut(BaseModel):
+    """A suggested reply for the colleague. Not sent: the colleague edits it and sends it as their own reply."""
+
+    draft: str
+    sources: list[str]
+    usage: TurnUsage
+
+
 class DecisionIn(BaseModel):
     decision: Literal["approve", "reject"]
     note: str | None = Field(default=None, max_length=500)

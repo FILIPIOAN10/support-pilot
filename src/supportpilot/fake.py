@@ -91,16 +91,45 @@ class ScriptedSupportModel(BaseChatModel):
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> ChatResult:
+        return _result(self._decide(messages), messages, "scripted-support")
+
+    def _decide(self, messages: list[BaseMessage]) -> AIMessage:
         humans = [m for m in messages if isinstance(m, HumanMessage)]
         question = str(humans[-1].content) if humans else ""
         last = messages[-1]
-        reply = self._react_to_tool(last, question) if isinstance(last, ToolMessage) else self._react_to_human(question)
-        n_in = sum(len(str(m.content)) for m in messages) // 4
-        n_out = max(1, len(str(reply.content)) // 4)
-        reply.usage_metadata = {
-            "input_tokens": n_in,
-            "output_tokens": n_out,
-            "total_tokens": n_in + n_out,
-        }
-        reply.response_metadata = {"model_name": "scripted-support"}
-        return ChatResult(generations=[ChatGeneration(message=reply)])
+        return self._react_to_tool(last, question) if isinstance(last, ToolMessage) else self._react_to_human(question)
+
+
+def _result(reply: AIMessage, messages: list[BaseMessage], name: str) -> ChatResult:
+    """Wraps a reply with a rough token count (4 characters per token), so the cost line has numbers offline too."""
+    n_in = sum(len(str(m.content)) for m in messages) // 4
+    n_out = max(1, len(str(reply.content)) // 4)
+    reply.usage_metadata = {"input_tokens": n_in, "output_tokens": n_out, "total_tokens": n_in + n_out}
+    reply.response_metadata = {"model_name": name}
+    return ChatResult(generations=[ChatGeneration(message=reply)])
+
+
+POLICY_EXCERPT = re.compile(r"POLICY EXCERPT:\n(.*?)\n\n", re.DOTALL)
+
+
+class ScriptedDraftModel(BaseChatModel):
+    """The offline stand-in for the colleague's draft: a greeting, the policy excerpt if there is one, a question."""
+
+    @property
+    def _llm_type(self) -> str:
+        return "scripted-draft"
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        found = POLICY_EXCERPT.search(str(messages[-1].content))
+        policy = re.sub(r"\s*\[\d+\]", "", found.group(1)).strip() if found else "(none)"
+        if policy == "(none)":
+            text = "Hi, thanks for waiting! I'm a colleague from the support team. Could you tell me a bit more about what you need?"
+        else:
+            text = f"Hi, thanks for waiting! I'm a colleague from the support team. {policy} Is there anything else I can help with?"
+        return _result(AIMessage(content=text), messages, "scripted-draft")

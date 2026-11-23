@@ -5,7 +5,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
 
 from supportpilot.config import Provider, Settings
-from supportpilot.fake import ScriptedSupportModel
+from supportpilot.fake import ScriptedDraftModel, ScriptedSupportModel
 
 
 class ProviderConfigError(RuntimeError):
@@ -58,3 +58,12 @@ def make_fallback_model(s: Settings) -> BaseChatModel | None:
     if s.fallback_provider in ("none", s.llm_provider):
         return None
     return make_chat_model(s, s.fallback_provider)
+
+
+def make_draft_model(s: Settings):
+    """The model behind the colleague's draft: the same provider as the agent (and its fallback), without tools."""
+    if s.llm_provider == "fake":
+        return ScriptedDraftModel()
+    model = make_chat_model(s)
+    fallback = make_fallback_model(s)
+    return model.with_fallbacks([fallback]) if fallback is not None else model

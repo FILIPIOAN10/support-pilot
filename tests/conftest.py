@@ -12,7 +12,8 @@ from pymongo import MongoClient
 
 from supportpilot.agent import build_agent
 from supportpilot.config import Settings
-from supportpilot.fake import ScriptedSupportModel
+from supportpilot.drafting import ReplyDrafter
+from supportpilot.fake import ScriptedDraftModel, ScriptedSupportModel
 from supportpilot.resilience import Conflict, ServiceUnavailable
 from supportpilot.service import SupportService
 from supportpilot.store import Store
@@ -144,7 +145,7 @@ def tools(orders, docuask):
 
 
 @pytest.fixture
-def make_service(mongo, settings, tools):
+def make_service(mongo, settings, tools, docuask):
     """Builds a service over the real Mongo database. Call it twice to simulate a restart of the process."""
 
     def build(model=None, tools_=None):
@@ -152,6 +153,6 @@ def make_service(mongo, settings, tools):
         store = Store(mongo)
         store.ensure_indexes()
         agent = build_agent(model or ScriptedSupportModel(), tools_ or tools, saver, settings)
-        return SupportService(agent, store), store
+        return SupportService(agent, store, ReplyDrafter(ScriptedDraftModel(), docuask)), store
 
     return build

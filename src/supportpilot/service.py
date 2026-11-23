@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.types import Command, GraphOutput
 from openinference.instrumentation import using_attributes
 
+from supportpilot.drafting import Draft, ReplyDrafter
 from supportpilot.store import Store
 from supportpilot.tools import HANDOFF_TOOL
 from supportpilot.triage import DIRECT_NODE, TRIAGE, messages_of
@@ -89,9 +90,10 @@ def _events(part: dict[str, Any]) -> Iterator[dict[str, Any]]:
 
 
 class SupportService:
-    def __init__(self, agent: Any, store: Store):
+    def __init__(self, agent: Any, store: Store, drafter: ReplyDrafter | None = None):
         self._agent = agent
         self._store = store
+        self._drafter = drafter
 
     @staticmethod
     def _config(conversation_id: str, customer_id: str) -> dict[str, Any]:
@@ -218,6 +220,21 @@ class SupportService:
         self._store.touch(conversation_id, "open")
         log.info("handoff answered conversation=%s by=%s", conversation_id, admin)
         return Outcome(conversation_id, "open", message)
+
+    def draft_for_colleague(self, conversation_id: str, admin: str) -> Draft:
+        """An AI-written suggestion for the colleague's reply. It changes nothing: the conversation stays handed off
+        and the transcript stays as it is until the colleague sends something with reply_as_colleague."""
+        handoff = self._store.pending_handoff(conversation_id)
+        if handoff is None or self._drafter is None:
+            raise NothingToApprove(conversation_id)
+        _, visible = self.messages(conversation_id, handoff["customer_id"])
+        with using_attributes(
+            session_id=conversation_id, user_id=handoff["customer_id"], metadata={"drafted_for": admin}
+        ):
+            draft = self._drafter.draft(visible, handoff.get("reason", ""))
+        self._store.add_usage(conversation_id, {k: draft.usage[k] for k in ("input_tokens", "output_tokens")})
+        log.info("draft for colleague conversation=%s by=%s", conversation_id, admin)
+        return draft
 
     def _after_run(
         self, conversation_id: str, customer_id: str, result: Any, usage: dict[str, int], started: float

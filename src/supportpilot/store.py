@@ -57,6 +57,10 @@ class Store:
             update["$inc"] = {f"usage.{k}": v for k, v in usage.items()}
         self.conversations.update_one({"_id": conversation_id}, update)
 
+    def add_usage(self, conversation_id: str, usage: dict[str, int]) -> None:
+        """Tokens spent outside a chat turn (a colleague's draft), so the conversation's cost stays complete."""
+        self.conversations.update_one({"_id": conversation_id}, {"$inc": {f"usage.{k}": v for k, v in usage.items()}})
+
     # --- approvals ------------------------------------------------------------------------------------------------
     def open_approval(self, conversation_id: str, customer_id: str, actions: list[dict[str, Any]]) -> None:
         self.approvals.insert_one(
@@ -115,6 +119,9 @@ class Store:
 
     def pending_handoffs(self) -> list[dict[str, Any]]:
         return list(self.handoffs.find({"status": "pending"}).sort("requested_at", 1))
+
+    def pending_handoff(self, conversation_id: str) -> dict[str, Any] | None:
+        return self.handoffs.find_one({"conversation_id": conversation_id, "status": "pending"})
 
     def claim_handoff(self, conversation_id: str, admin: str) -> dict[str, Any] | None:
         """Atomic like claim_approval: two colleagues answering at once, only one reply goes out."""

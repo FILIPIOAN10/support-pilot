@@ -51,7 +51,9 @@ Open **http://localhost:8001/**: a one-page UI served by the API (plain HTML and
 - **Customer** panel: pick `c-100` or `c-200`, chat with the agent (example messages included); the badge shows when a
   conversation is *waiting for a human*.
 - **Support colleague** panel: the pending refunds with the exact tool arguments, **Approve** / **Reject** with a note;
-  the customer's chat updates with the result.
+  the customer's chat updates with the result. Below them, the customers who asked for a person: **Draft with AI**
+  fills the reply box with a suggestion (with the policy sources and what it cost), the colleague edits it and presses
+  **Send reply**.
 - Every reply shows its HTTP status, time and request id (the same id as in `docker compose logs api`).
 
 Keys are typed in the page (`dev-gateway-key`, `dev-admin-key` locally) and kept only in the browser tab. All server
@@ -76,6 +78,7 @@ uv run python -m evals.run             # evaluation (scripted model; LLM_PROVIDE
 | GET | `/v1/admin/approvals` | support agent | refunds waiting for a decision, with the exact tool arguments |
 | POST | `/v1/admin/approvals/{conversation_id}` | support agent | `{"decision": "approve" \| "reject", "note": "..."}` resumes the paused agent |
 | GET | `/v1/admin/handoffs` | support agent | customers who asked for a person (the agent called `handoff_to_human`), each with its visible messages |
+| POST | `/v1/admin/handoffs/{conversation_id}/draft` | support agent | an AI-suggested reply from the conversation and the matching policies: `draft`, `sources`, `usage`. Sends nothing |
 | POST | `/v1/admin/handoffs/{conversation_id}` | support agent | `{"message": "..."}`: the colleague answers; the reply joins the agent's transcript and the agent takes over again at the next message |
 | GET | `/health/live`, `/health/ready` | orchestrator | ready needs MongoDB; Redis is reported, not required |
 
@@ -94,6 +97,12 @@ Customer routes need `X-API-Key` (the shop's gateway) and `X-Customer-Id`; admin
   anything with a support signal, and anything the rules are unsure about, goes to the agent - so the rules can only
   save cost, never block a real question. The agent loop runs as a subgraph and inherits the outer checkpointer, so the
   approval pause, restart and resume work unchanged.
+- **AI assists the colleague, it does not replace them.** When the agent hands over, the colleague can ask for a draft
+  (`src/supportpilot/drafting.py`): the policy excerpt from DocuAsk plus one model call, no tools and no loop. It is
+  a suggestion only: the conversation stays handed off and nothing reaches the customer until a person sends it, which
+  is why a single prompt is enough here while refunds need the approval gate. E-mails are redacted, the transcript is
+  marked as data, the tokens are added to the conversation's cost, and if DocuAsk is down the draft still comes, saying
+  that no policy matched.
 - **Rules live in the tools, not in the prompt.** Ownership and the 30-day window are re-checked inside
   `request_refund`, after the human approved. Prompts persuade; code enforces.
 - **Human in the loop = a LangGraph interrupt.** The graph pauses, its state is saved in MongoDB, and an admin's decision
@@ -111,7 +120,7 @@ Customer routes need `X-API-Key` (the shop's gateway) and `X-Customer-Id`; admin
 
 ## Tests
 
-58 tests, 95 % coverage, green in CI (lint, tests on MongoDB and Redis service containers, then the Docker image build):
+100 tests, 95 % coverage, green in CI (lint, tests on MongoDB and Redis service containers, then the Docker image build):
 breaker and retry logic, every tool (including cross-customer access), the agent loop with approve / reject /
 loop-limit / PII scenarios and a deliberately compromised model, the service against **real MongoDB and Redis**
 (Testcontainers), a restart in the middle of an approval, two admins racing (two threads, one barrier, one refund), the
