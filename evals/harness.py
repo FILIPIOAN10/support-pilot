@@ -30,6 +30,7 @@ from supportpilot.agent import build_agent
 from supportpilot.config import Settings
 from supportpilot.service import text_of
 from supportpilot.tools import build_tools
+from supportpilot.triage import messages_of
 
 CASES_FILE = Path(__file__).with_name("cases.json")
 
@@ -121,7 +122,7 @@ def run_once(model: BaseChatModel, settings: Settings, customer: str, message: s
     with get_usage_metadata_callback() as usage:
         result = agent.invoke({"messages": [HumanMessage(message)]}, config, version="v2")
     seconds = time.perf_counter() - started
-    messages = result.value["messages"]
+    messages = messages_of(agent, config, result)
     last = messages[-1]
     run = Run(
         ok=False,

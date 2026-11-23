@@ -18,6 +18,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import BaseTool
 
 from supportpilot.config import Settings
+from supportpilot.triage import build_support_graph
 
 SYSTEM_PROMPT = """\
 You are the customer-support assistant of an online shop. You talk to ONE customer; tools only ever see that customer.
@@ -54,4 +55,6 @@ def build_agent(
         # a failed model call (provider outage, 5xx after its own retries, timeout) is repeated on the fallback model;
         # the tools, limits and the approval gate stay exactly the same
         middleware.append(ModelFallbackMiddleware(fallback))
-    return create_agent(model, tools, system_prompt=SYSTEM_PROMPT, middleware=middleware, checkpointer=checkpointer)
+    # the agent loop is compiled WITHOUT its own checkpointer: as a subgraph it uses the outer graph's one
+    agent = create_agent(model, tools, system_prompt=SYSTEM_PROMPT, middleware=middleware)
+    return build_support_graph(agent, checkpointer)

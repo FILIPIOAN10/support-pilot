@@ -16,6 +16,7 @@ from openinference.instrumentation import using_attributes
 
 from supportpilot.store import Store
 from supportpilot.tools import HANDOFF_TOOL
+from supportpilot.triage import DIRECT_NODE, TRIAGE, messages_of
 
 log = logging.getLogger(__name__)
 
@@ -75,9 +76,12 @@ def _events(part: dict[str, Any]) -> Iterator[dict[str, Any]]:
     """Translate LangGraph stream parts into the two kinds of live events the page shows."""
     if part["type"] == "messages":  # pieces of what the model writes, as it writes them
         message, meta = part["data"]
-        if isinstance(message, AIMessage) and meta.get("langgraph_node") == "model" and (text := text_of(message)):
+        node = meta.get("langgraph_node")
+        if isinstance(message, AIMessage) and node in ("model", DIRECT_NODE) and (text := text_of(message)):
             yield {"event": "token", "data": {"text": text}}
-    elif part["type"] == "updates":  # a node finished; the model node's message carries its complete tool calls
+    elif (
+        part["type"] == "updates"
+    ):  # a node finished (inside the agent subgraph too); the model's carries the tool calls
         update = part["data"].get("model")
         for message in update.get("messages", []) if isinstance(update, dict) else []:
             for call in getattr(message, "tool_calls", []):
@@ -144,7 +148,9 @@ class SupportService:
                     get_usage_metadata_callback() as usage,
                     using_attributes(session_id=conversation_id, user_id=customer_id),
                 ):
-                    for part in self._agent.stream(payload, config, stream_mode=["messages", "updates"], version="v2"):
+                    for part in self._agent.stream(
+                        payload, config, stream_mode=["messages", "updates"], subgraphs=True, version="v2"
+                    ):
                         for event in _events(part):
                             events.put(event)
                 state = self._agent.get_state(config)  # the checkpoint knows how the run ended: answer or pause
@@ -216,10 +222,11 @@ class SupportService:
     def _after_run(
         self, conversation_id: str, customer_id: str, result: Any, usage: dict[str, int], started: float
     ) -> Outcome:
-        turn = _this_turn(result.value["messages"])
+        config = self._config(conversation_id, customer_id)
+        turn = _this_turn(messages_of(self._agent, config, result))
         calls = [call for m in turn if isinstance(m, AIMessage) for call in m.tool_calls]
         stats = {
-            "model_calls": sum(isinstance(m, AIMessage) for m in turn),
+            "model_calls": sum(isinstance(m, AIMessage) and m.name != TRIAGE for m in turn),  # triage costs nothing
             "tool_calls": len(calls),
             **usage,
             "seconds": round(time.perf_counter() - started, 2),
