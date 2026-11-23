@@ -6,7 +6,7 @@ import pytest
 from langchain_core.outputs import ChatResult
 
 from supportpilot.fake import ScriptedSupportModel
-from supportpilot.service import ApprovalPending, ConversationNotFound, NothingToApprove
+from supportpilot.service import ApprovalPending, ConversationNotFound, HandedOff, NothingToApprove
 
 
 def test_a_simple_question_creates_a_conversation_and_records_usage(make_service):
@@ -125,3 +125,36 @@ def test_erasing_a_customer_removes_transcripts_records_and_approvals_and_nobody
     assert mongo["checkpoints"].count_documents({"thread_id": theirs.conversation_id}) > 0
     assert service.messages(theirs.conversation_id, "c-200")[1]
     assert service.erase_customer("c-100") == 0  # idempotent
+
+
+def test_asking_for_a_person_hands_the_conversation_to_a_colleague(make_service):
+    service, store = make_service()
+    out = service.chat("c-100", "I want to talk to a human, please")
+    assert out.status == "handed_off" and "colleague" in out.reply
+    assert store.pending_handoffs()[0]["conversation_id"] == out.conversation_id
+    with pytest.raises(HandedOff):  # the agent stays out until the colleague replies
+        service.chat("c-100", "hello?", out.conversation_id)
+
+
+def test_the_colleagues_reply_lands_in_the_transcript_and_the_agent_continues(make_service):
+    service, store = make_service()
+    out = service.chat("c-100", "Can I speak to a real agent?")
+    waiting = service.pending_handoffs()
+    assert [m["role"] for m in waiting[0]["messages"]] == ["customer", "assistant"]  # the colleague sees the context
+
+    service.reply_as_colleague(out.conversation_id, "Hi, Maria here. How can I help?", "maria")
+    with pytest.raises(NothingToApprove):  # a second colleague is too late
+        service.reply_as_colleague(out.conversation_id, "Hi!", "john")
+    assert store.pending_handoffs() == []
+
+    later = service.chat("c-100", "Where is my order 1002?", out.conversation_id)  # back to the agent
+    assert later.status == "open" and "shipped" in later.reply
+    _, messages = service.messages(out.conversation_id, "c-100")
+    assert ("colleague", "Hi, Maria here. How can I help?") in [(m["role"], m["content"]) for m in messages]
+
+
+def test_every_turn_reports_what_it_cost(make_service):
+    service, _ = make_service()
+    usage = service.chat("c-100", "Where is my order 1002?").usage
+    assert usage["model_calls"] == 2 and usage["tool_calls"] == 1  # decide on the tool, then answer
+    assert usage["input_tokens"] > 0 and usage["output_tokens"] > 0 and usage["seconds"] >= 0

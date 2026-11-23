@@ -54,11 +54,16 @@
   .msg { max-width: 85%; padding: 8px 12px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .msg.customer { align-self: flex-end; background: var(--me); }
   .msg.assistant { align-self: flex-start; background: var(--bot); }
+  .msg.colleague { align-self: flex-start; background: var(--me); border: 1px solid var(--accent); }
+  .msg.colleague::before { content: "Support colleague"; display: block; font-size: .75rem; font-weight: 600; color: var(--accent); }
+  .msg.usage { align-self: flex-start; padding: 0 12px; margin-top: -4px; font-size: .75rem; color: var(--muted); }
+  .handoff .transcript { margin: 6px 0; padding: 6px 10px; border-left: 3px solid var(--line); font-size: .85rem; white-space: pre-wrap; }
   .msg.tool { align-self: flex-start; padding: 2px 12px; font-size: .8rem; color: var(--muted); font-family: ui-monospace, monospace; }
   .empty { color: var(--muted); font-size: .9rem; margin: auto; text-align: center; }
   .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: .8rem; font-weight: 600; border: 1px solid currentColor; }
   .badge.open { color: var(--ok); }
   .badge.awaiting_approval { color: var(--warn); }
+  .badge.handed_off { color: var(--accent); }
   .badge.none { color: var(--muted); }
   .badge.up { color: var(--ok); }
   .badge.down { color: var(--bad); }
@@ -126,7 +131,7 @@
         <h2 id="admin-title">Support colleague</h2>
         <button id="refresh" class="small" type="button">Refresh</button>
       </div>
-      <p class="hint">Every refund stops here. You see exactly what the agent would do, and approve or reject it.</p>
+      <p class="hint">Every refund stops here, and so does every customer who asks for a person. With the admin key filled in, the lists refresh by themselves every few seconds.</p>
       <div class="fields">
         <div>
           <label for="admin-key">Admin key (<code>dev-admin-key</code> locally)</label>
@@ -138,6 +143,8 @@
         </div>
       </div>
       <div id="approvals"><p class="muted">Press Refresh to see pending refunds.</p></div>
+      <h3>Customers waiting for a person</h3>
+      <div id="handoffs"><p class="muted">Nobody yet.</p></div>
       <p id="admin-notice" class="notice" role="status"></p>
     </section>
   </div>
@@ -212,7 +219,7 @@ function adminHeaders() {
 function setStatus(status) {
   const badge = $("conv-status");
   badge.className = "badge " + (status || "none");
-  badge.textContent = status === "awaiting_approval" ? "waiting for a human" : status === "open" ? "open" : "no conversation";
+  badge.textContent = { awaiting_approval: "waiting for a human", handed_off: "with a colleague", open: "open" }[status] || "no conversation";
 }
 
 function addMessage(role, text) {
@@ -221,6 +228,12 @@ function addMessage(role, text) {
   if (empty) empty.remove();
   chat.append(el("div", text, "msg " + role));
   chat.scrollTop = chat.scrollHeight;
+}
+
+// "2 model calls · 1 tool call · 512 + 18 tokens · 0.21 s": what the turn cost, shown under the reply
+function usageText(u) {
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  return `${plural(u.model_calls, "model call")} · ${plural(u.tool_calls, "tool call")} · ${u.input_tokens} + ${u.output_tokens} tokens · ${u.seconds} s`;
 }
 
 function resetChat() {
@@ -280,9 +293,11 @@ async function send(text) {
       if (event === "token") { written += data.text; bubble.textContent = written; }
       if (event === "done") {
         bubble.textContent = data.reply;  // the final word: the saved reply, or "sent for approval"
+        if (data.usage) bubble.after(el("div", usageText(data.usage), "msg usage"));
         conversationId = data.conversation_id;
         setStatus(data.status);
-        const extra = data.status === "awaiting_approval" ? "\nThe refund is waiting: decide it in the Support colleague panel." : "";
+        const extra = data.status === "awaiting_approval" ? "\nThe refund is waiting: decide it in the Support colleague panel."
+          : data.status === "handed_off" ? "\nA colleague will answer here: reply from the Support colleague panel." : "";
         say("customer-notice", meta(res, Math.round(performance.now() - started)) + extra, data.status === "awaiting_approval" ? "" : "ok");
       }
       if (event === "error") { bubble.textContent = "Something went wrong."; say("customer-notice", data.detail, "error"); }
@@ -305,6 +320,21 @@ async function reloadConversation() {
   say("customer-notice", "Conversation reloaded from the server. " + meta(r.res, r.ms), "ok");
 }
 
+// While a person has the last word (a refund to decide, a handed-off conversation), the customer's chat checks
+// every 3 s and shows the answer as soon as it is there: no reload button needed.
+setInterval(async () => {
+  const status = $("conv-status").className.replace("badge ", "");
+  if (!conversationId || !["awaiting_approval", "handed_off"].includes(status)) return;
+  try {
+    const r = await call(`/v1/conversations/${encodeURIComponent(conversationId)}`, customerHeaders());
+    if (!r.res.ok || r.data.status === status) return;
+    $("chat").replaceChildren();
+    for (const m of r.data.messages) addMessage(m.role, m.content);
+    setStatus(r.data.status);
+    say("customer-notice", "Updated: a colleague has answered.", "ok");
+  } catch (_) { /* the next tick tries again */ }
+}, 3000);
+
 function renderApproval(a) {
   const box = el("div", null, "approval");
   const action = a.actions[0] || { name: "?", args: {} };
@@ -326,16 +356,59 @@ function renderApproval(a) {
   return box;
 }
 
-async function refreshApprovals() {
+function renderHandoff(h) {
+  const box = el("div", null, "approval handoff");
+  box.append(el("div", `${h.customer_id} · ${new Date(h.requested_at).toLocaleString()}`, "muted"));
+  box.append(el("div", "Reason: " + h.reason, "args"));
+  box.append(el("div", h.messages.slice(-4).map((m) => `${m.role}: ${m.content}`).join("\n"), "transcript"));
+  const text = el("input");
+  text.placeholder = "Your reply to the customer";
+  text.maxLength = 2000;
+  const send = el("button", "Send reply", "small primary");
+  send.type = "button";
+  send.addEventListener("click", () => replyToHandoff(h.conversation_id, text.value, send));
+  const row = el("div", null, "row");
+  row.append(send);
+  box.append(text, row);
+  return box;
+}
+
+async function refreshHandoffs() {
+  const r = await call("/v1/admin/handoffs", adminHeaders());
+  if (!r.res.ok) return;
+  const list = $("handoffs");
+  if (list.contains(document.activeElement)) return;  // never wipe a reply the colleague is typing
+  list.replaceChildren();
+  if (r.data.length === 0) list.append(el("p", "Nobody is waiting for a person.", "muted"));
+  for (const h of r.data) list.append(renderHandoff(h));
+}
+
+async function replyToHandoff(id, message, button) {
+  if (!message.trim()) { say("admin-notice", "Write a reply first.", "error"); return; }
+  button.disabled = true;
+  const r = await call(`/v1/admin/handoffs/${encodeURIComponent(id)}`, adminHeaders(), { message: message.trim() });
+  button.blur();
+  await refreshHandoffs();
+  say("admin-notice", r.res.ok ? `Sent to the customer.\n${meta(r.res, r.ms)}` : `${detail(r)}\n${meta(r.res, r.ms)}`, r.res.ok ? "ok" : "error");
+}
+
+// the support panel keeps itself current once the admin key is typed in
+setInterval(() => { if ($("admin-key").value.trim()) refreshApprovals(true); }, 4000);
+
+async function refreshApprovals(quiet) {
   $("refresh").disabled = true;
   try {
     const r = await call("/v1/admin/approvals", adminHeaders());
+    if (!r.res.ok && quiet === true) return;  // a background refresh never nags
     if (!r.res.ok) { say("admin-notice", `${detail(r)}\n${meta(r.res, r.ms)}`, "error"); return; }
     const list = $("approvals");
-    list.replaceChildren();
-    if (r.data.length === 0) list.append(el("p", "Nothing is waiting for a decision.", "muted"));
-    for (const a of r.data) list.append(renderApproval(a));
-    say("admin-notice", `${r.data.length} pending · ${meta(r.res, r.ms)}`, "ok");
+    if (!list.contains(document.activeElement)) {  // never wipe a note the colleague is typing
+      list.replaceChildren();
+      if (r.data.length === 0) list.append(el("p", "Nothing is waiting for a decision.", "muted"));
+      for (const a of r.data) list.append(renderApproval(a));
+    }
+    await refreshHandoffs();
+    if (quiet !== true) say("admin-notice", `${r.data.length} pending · ${meta(r.res, r.ms)}`, "ok");
   } catch (e) {
     say("admin-notice", "The service did not answer: " + e.message, "error");
   } finally {

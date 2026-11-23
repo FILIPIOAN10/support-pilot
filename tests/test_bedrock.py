@@ -62,7 +62,13 @@ def test_bedrock_drives_the_agent_through_a_tool_call(bedrock, tools, settings):
     assert result.value["messages"][-1].content == "Your order 1002 has shipped."
     first, second = sent
     specs = {t["toolSpec"]["name"]: t["toolSpec"]["inputSchema"]["json"] for t in first["toolConfig"]["tools"]}
-    assert set(specs) == {"get_order", "search_policies", "check_refund_eligibility", "request_refund"}
+    assert set(specs) == {
+        "get_order",
+        "search_policies",
+        "check_refund_eligibility",
+        "request_refund",
+        "handoff_to_human",
+    }
     assert list(specs["get_order"]["properties"]) == ["order_id"]  # the model is never offered customer_id
     tool_result = second["messages"][-1]["content"][0]["toolResult"]
     assert tool_result["toolUseId"] == "tooluse_1" and "1002" in str(tool_result["content"])

@@ -70,11 +70,13 @@ uv run python -m evals.run             # evaluation (scripted model; LLM_PROVIDE
 
 | Method | Path | Who | What |
 |---|---|---|---|
-| POST | `/v1/chat` | customer | message in, reply out; `status` is `open` or `awaiting_approval` |
+| POST | `/v1/chat` | customer | message in, reply out; `status` is `open`, `awaiting_approval` or `handed_off`; `usage` = model calls, tool calls, tokens and seconds of this turn |
 | POST | `/v1/chat/stream` | customer | the same, as Server-Sent Events: `start`, then `tool` / `token` while the agent works, then `done` (same fields) or `error` |
 | GET | `/v1/conversations/{id}` | customer | the visible messages (tool calls stay internal) |
 | GET | `/v1/admin/approvals` | support agent | refunds waiting for a decision, with the exact tool arguments |
 | POST | `/v1/admin/approvals/{conversation_id}` | support agent | `{"decision": "approve" \| "reject", "note": "..."}` resumes the paused agent |
+| GET | `/v1/admin/handoffs` | support agent | customers who asked for a person (the agent called `handoff_to_human`), each with its visible messages |
+| POST | `/v1/admin/handoffs/{conversation_id}` | support agent | `{"message": "..."}`: the colleague answers; the reply joins the agent's transcript and the agent takes over again at the next message |
 | GET | `/health/live`, `/health/ready` | orchestrator | ready needs MongoDB; Redis is reported, not required |
 
 Customer routes need `X-API-Key` (the shop's gateway) and `X-Customer-Id`; admin routes need `X-Admin-Key` and take

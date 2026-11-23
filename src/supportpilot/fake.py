@@ -19,6 +19,7 @@ ORDER_ID = re.compile(r"\b(\d{4,6})\b")
 REFUND = re.compile(r"refund|money back|send it back", re.IGNORECASE)
 STATUS = re.compile(r"where|status|track|deliver|arrive|shipped|when", re.IGNORECASE)
 POLICY = re.compile(r"\?|policy|policies|warranty|shipping|return", re.IGNORECASE)
+HUMAN = re.compile(r"\b(human|person|real agent|colleague|manager|talk to someone)\b", re.IGNORECASE)
 
 
 def _call(name: str, **args: Any) -> AIMessage:
@@ -34,7 +35,7 @@ class ScriptedSupportModel(BaseChatModel):
         return "scripted-support"
 
     def bind_tools(self, tools: Any, **kwargs: Any) -> "ScriptedSupportModel":
-        return self  # it already "knows" its four tools
+        return self  # it already "knows" its tools
 
     def _react_to_tool(self, tool_message: ToolMessage, question: str) -> AIMessage:
         text = str(tool_message.content)
@@ -57,6 +58,8 @@ class ScriptedSupportModel(BaseChatModel):
                 if "refund_id" in data:
                     return AIMessage(content=f"Done. Refund {data['refund_id']} is registered and {data['status']}.")
                 return AIMessage(content=f"About your refund: {text}")
+            case "handoff_to_human":
+                return AIMessage(content="I'm passing you to a colleague, who will answer here shortly.")
             case "get_order":
                 data = json.loads(text) if text.startswith("{") else {}
                 if data:
@@ -69,6 +72,8 @@ class ScriptedSupportModel(BaseChatModel):
                 return AIMessage(content=text)
 
     def _react_to_human(self, text: str) -> AIMessage:
+        if HUMAN.search(text):
+            return _call("handoff_to_human", reason=text[:300])
         found = ORDER_ID.search(text)
         order_id = found.group(1) if found else None
         if order_id and REFUND.search(text):

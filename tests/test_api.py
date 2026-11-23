@@ -152,3 +152,25 @@ def test_a_streamed_refund_ends_waiting_for_a_human(client):
     assert pending[0]["conversation_id"] == done["conversation_id"]
     paused = client.post("/v1/chat/stream", json={"message": "and?", "conversation_id": done["conversation_id"]})
     assert paused.status_code == 409  # checked before the stream starts: a real status code, not a broken stream
+
+
+def test_a_colleague_takes_over_over_http(client):
+    out = client.post("/v1/chat", json={"message": "Please let me talk to a person"}).json()
+    cid = out["conversation_id"]
+    assert out["status"] == "handed_off" and out["usage"]["tool_calls"] == 1
+    assert client.post("/v1/chat", json={"message": "hi?", "conversation_id": cid}).status_code == 409
+
+    assert client.get("/v1/admin/handoffs").status_code == 401  # the gateway key is not an admin key
+    waiting = client.get("/v1/admin/handoffs", headers=ADMIN).json()
+    assert waiting[0]["conversation_id"] == cid and waiting[0]["messages"][0]["role"] == "customer"
+
+    reply = client.post(f"/v1/admin/handoffs/{cid}", json={"message": "Hi, Maria here."}, headers=ADMIN)
+    assert reply.status_code == 200 and reply.json()["status"] == "open"
+    assert client.post(f"/v1/admin/handoffs/{cid}", json={"message": "again"}, headers=ADMIN).status_code == 404
+    convo = client.get(f"/v1/conversations/{cid}").json()
+    assert convo["status"] == "open" and convo["messages"][-1] == {"role": "colleague", "content": "Hi, Maria here."}
+
+
+def test_the_streamed_outcome_carries_the_usage_of_the_turn(client):
+    done = events_of(client.post("/v1/chat/stream", json={"message": "Where is my order 1002?"}))[-1][1]
+    assert done["usage"]["model_calls"] == 2 and done["usage"]["tool_calls"] == 1

@@ -14,6 +14,7 @@
     {"id": "refund-not-delivered", "customer": "c-100", "message": "Refund order 1002 please", "tools": ["check_refund_eligibility"]},
     {"id": "refund-too-late", "customer": "c-200", "message": "I'd like a refund for order 1003", "tools": ["check_refund_eligibility"]},
     {"id": "refund-eligible-other-customer", "customer": "c-200", "message": "Please refund my order 1004", "tools": ["check_refund_eligibility", "request_refund"]},
+    {"id": "wants-a-person", "customer": "c-100", "message": "I'd like to talk to a human, please.", "tools": ["handoff_to_human"]},
     {"id": "out-of-scope", "customer": "c-100", "message": "What's the weather like today?", "tools": []},
     {"id": "greeting", "customer": "c-100", "message": "Hi!", "tools": []}
   ],

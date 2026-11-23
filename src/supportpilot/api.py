@@ -23,13 +23,16 @@ from supportpilot.schemas import (
     ApprovalOut,
     ChatIn,
     ChatOut,
+    ColleagueReplyIn,
     ConversationOut,
     DecisionIn,
+    HandoffOut,
     MessageOut,
 )
 from supportpilot.service import (
     ApprovalPending,
     ConversationNotFound,
+    HandedOff,
     NothingToApprove,
     SupportService,
 )
@@ -130,6 +133,11 @@ def _conversation_errors() -> Iterator[None]:
             status.HTTP_409_CONFLICT,
             "A human is reviewing the last request; wait for the result",
         ) from e
+    except HandedOff as e:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "A colleague has taken over this conversation and will answer here",
+        ) from e
 
 
 @router.post("/chat", response_model=ChatOut, tags=["chat"])
@@ -141,6 +149,7 @@ def chat(body: ChatIn, customer: Customer, service: Service, limiter: Limiter, r
         conversation_id=outcome.conversation_id,
         status=outcome.status,
         reply=outcome.reply,
+        usage=outcome.usage,
     )
 
 
@@ -199,6 +208,21 @@ def decide(conversation_id: str, body: DecisionIn, admin: Admin, service: Servic
         status=outcome.status,
         reply=outcome.reply,
     )
+
+
+@router.get("/admin/handoffs", response_model=list[HandoffOut], tags=["admin"])
+def pending_handoffs(_: Admin, service: Service) -> list[HandoffOut]:
+    """Conversations the agent passed to a person, oldest first, each with its visible messages."""
+    return [HandoffOut(**h) for h in service.pending_handoffs()]
+
+
+@router.post("/admin/handoffs/{conversation_id}", response_model=ChatOut, tags=["admin"])
+def reply_to_handoff(conversation_id: str, body: ColleagueReplyIn, admin: Admin, service: Service) -> ChatOut:
+    try:
+        outcome = service.reply_as_colleague(conversation_id, body.message, admin)
+    except NothingToApprove as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Nobody is waiting for a colleague there") from e
+    return ChatOut(conversation_id=outcome.conversation_id, status=outcome.status, reply=outcome.reply)
 
 
 @router.delete(

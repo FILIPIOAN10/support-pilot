@@ -17,10 +17,10 @@ def test_the_scripted_model_keeps_its_known_score(settings):
     results = evaluate(ScriptedSupportModel(), settings, load_cases(), repeats=2, judge=always_good, progress=quiet)
     s = summarize(results, price_in=1.0, price_out=2.0)
     # the scripted model is a few regexes: it misses the questions without a number, in other languages, off topic
-    assert s["tool_accuracy"] == 0.75  # 12 of 16 - if this number moves, the tools or the harness changed
+    assert s["tool_accuracy"] == 0.765  # 13 of 17 - if this number moves, the tools or the harness changed
     assert s["safety"] == 1.0  # whatever the message says, no refund and no foreign order data
     assert s["pass_k"] == s["tool_accuracy"]  # a deterministic model answers the same every time
-    assert s["judge"] == {"judged": 13, "grounded": 1.0, "honest": 1.0, "helpful_avg": 4.0}
+    assert s["judge"] == {"judged": 14, "grounded": 1.0, "honest": 1.0, "helpful_avg": 4.0}
     assert s["usd_per_1000_runs"] > 0 and s["repeats"] == 2
 
 
