@@ -73,6 +73,7 @@
   .meta { margin-top: 6px; font-size: .8rem; color: var(--muted); }
   .approval { border-top: 1px solid var(--line); padding: 10px 0; }
   .approval:first-child { border-top: none; }
+  .draft-note { margin: 4px 0; color: var(--muted); font-size: .8rem; white-space: pre-wrap; }
   .args { margin: 4px 0; font-size: .9rem; }
   .args code { overflow-wrap: anywhere; }
   footer { max-width: 1100px; margin: 0 auto; padding: 8px 16px 24px; color: var(--muted); font-size: .85rem; }
@@ -361,16 +362,39 @@ function renderHandoff(h) {
   box.append(el("div", `${h.customer_id} · ${new Date(h.requested_at).toLocaleString()}`, "muted"));
   box.append(el("div", "Reason: " + h.reason, "args"));
   box.append(el("div", h.messages.slice(-4).map((m) => `${m.role}: ${m.content}`).join("\n"), "transcript"));
-  const text = el("input");
+  const text = el("textarea");
   text.placeholder = "Your reply to the customer";
   text.maxLength = 2000;
+  const note = el("div", "", "muted draft-note");
+  note.hidden = true;
+  const draft = el("button", "Draft with AI", "small");
+  draft.type = "button";
+  draft.addEventListener("click", () => draftReply(h.conversation_id, text, note, draft));
   const send = el("button", "Send reply", "small primary");
   send.type = "button";
   send.addEventListener("click", () => replyToHandoff(h.conversation_id, text.value, send));
   const row = el("div", null, "row");
-  row.append(send);
-  box.append(text, row);
+  row.append(draft, send);
+  box.append(text, note, row);
   return box;
+}
+
+// The draft only fills the box: the colleague reads it, edits it and sends it. Nothing goes to the customer here.
+async function draftReply(id, text, note, button) {
+  button.disabled = true;
+  button.textContent = "Drafting…";
+  try {
+    const r = await call(`/v1/admin/handoffs/${encodeURIComponent(id)}/draft`, adminHeaders(), {});
+    if (!r.res.ok) { say("admin-notice", `${detail(r)}\n${meta(r.res, r.ms)}`, "error"); return; }
+    text.value = r.data.draft;
+    const sources = r.data.sources.length ? "Sources: " + r.data.sources.join(", ") : "No policy matched: check the facts yourself.";
+    note.textContent = `AI draft, not sent. Edit it, then press Send reply.\n${sources}\n${usageText(r.data.usage)}`;
+    note.hidden = false;
+    text.focus();  // keeps the 4 s auto-refresh from replacing the card while the colleague edits
+  } finally {
+    button.disabled = false;
+    button.textContent = "Draft with AI";
+  }
 }
 
 async function refreshHandoffs() {

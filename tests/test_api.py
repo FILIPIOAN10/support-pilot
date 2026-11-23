@@ -171,6 +171,19 @@ def test_a_colleague_takes_over_over_http(client):
     assert convo["status"] == "open" and convo["messages"][-1] == {"role": "colleague", "content": "Hi, Maria here."}
 
 
+def test_the_colleague_gets_an_ai_draft_over_http_and_nothing_is_sent(client):
+    cid = client.post("/v1/chat", json={"message": "I want a person to explain the return policy"}).json()[
+        "conversation_id"
+    ]
+    assert client.post(f"/v1/admin/handoffs/{cid}/draft").status_code == 401  # admins only
+    draft = client.post(f"/v1/admin/handoffs/{cid}/draft", headers=ADMIN)
+    body = draft.json()
+    assert draft.status_code == 200 and "30 days" in body["draft"] and body["sources"]
+    assert body["usage"]["model_calls"] == 1 and body["usage"]["tool_calls"] == 0
+    assert client.get(f"/v1/conversations/{cid}").json()["status"] == "handed_off"  # still waiting for the person
+    assert client.post("/v1/admin/handoffs/nope/draft", headers=ADMIN).status_code == 404
+
+
 def test_the_streamed_outcome_carries_the_usage_of_the_turn(client):
     done = events_of(client.post("/v1/chat/stream", json={"message": "Where is my order 1002?"}))[-1][1]
     assert done["usage"]["model_calls"] == 2 and done["usage"]["tool_calls"] == 1
